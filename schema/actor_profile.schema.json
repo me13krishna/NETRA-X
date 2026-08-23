@@ -1,0 +1,302 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "actor_profile.schema.json",
+  "title": "ActorProfile",
+  "description": "Canonical record for one dark-web threat actor. Every extraction/enrichment module writes into one section of this record. The fusion engine compares two ActorProfiles field-by-field to decide whether they represent the same real-world actor. Built for SIH26151 (NTRO) — Dark web threat actor de-anonymization.",
+  "type": "object",
+  "required": ["actor_id", "identifiers", "provenance"],
+  "properties": {
+
+    "actor_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Assigned once one or more personas merge above the confidence threshold. Not assigned to a raw, unmerged persona."
+    },
+
+    "identifiers": {
+      "type": "object",
+      "description": "Every identifier ever linked to this actor. Self-disclosed identifiers (things the actor posted themselves) are marked separately from inferred ones.",
+      "properties": {
+        "known_aliases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "handle": {"type": "string"},
+              "first_seen": {"type": "string", "format": "date-time"},
+              "last_seen": {"type": "string", "format": "date-time"},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            },
+            "required": ["handle"]
+          }
+        },
+        "pgp_fingerprints": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Full PGP key fingerprints extracted from signed messages."
+        },
+        "pgp_client_signature": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "version_string": {"type": "string", "description": "e.g. 'GnuPG v2.1 / Enigmail' — extracted from the Version: header of a signed message."},
+              "seen_with_fingerprint": {"type": "string"}
+            }
+          },
+          "description": "Secondary, low-medium confidence corroborating signal. Never used standalone."
+        },
+        "wallet_addresses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chain": {"type": "string", "enum": ["BTC", "ETH", "XMR", "other"]},
+              "address": {"type": "string"},
+              "cluster_id": {"type": "string", "description": "Populated by common-input-ownership clustering if applied."}
+            },
+            "required": ["chain", "address"]
+          }
+        },
+        "linked_emails": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "email": {"type": "string", "format": "email"},
+              "source": {"type": "string", "enum": ["pgp_user_id", "keyserver_lookup", "breach_membership", "manual_investigator_input"]},
+              "breach_membership": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "breach_name": {"type": "string"},
+                    "breach_date": {"type": "string", "format": "date"}
+                  }
+                },
+                "description": "MEMBERSHIP ONLY — which breaches this email appeared in, via HIBP-style API. Never store leaked passwords or other stolen credential material, hashed or plaintext."
+              }
+            },
+            "required": ["email", "source"]
+          }
+        },
+        "linked_usernames_clearnet": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "platform": {"type": "string"},
+              "handle": {"type": "string"},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+              "method": {"type": "string", "enum": ["username_reuse_scan", "self_disclosed"]}
+            }
+          }
+        },
+        "cross_platform_contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "platform": {"type": "string", "enum": ["Telegram", "Session", "Signal", "Jabber/XMPP", "other"]},
+              "handle": {"type": "string"},
+              "self_disclosed": {"type": "boolean", "const": true},
+              "confidence": {"type": "string", "const": "high — actor posted this themselves"}
+            }
+          },
+          "description": "Contact identifiers the actor posted directly in listings/messages for buyers to reach them off-platform. Treated as high confidence since it's self-disclosed, not inferred."
+        },
+        "referral_codes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string"},
+              "seen_on_markets": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "description": "Same confidence tier as wallet reuse — a persistent identifier reused across markets."
+        }
+      }
+    },
+
+    "identity_resolution": {
+      "type": "object",
+      "description": "Real-world identity, populated ONLY above the abstention confidence threshold. The system stays silent rather than guess.",
+      "properties": {
+        "real_name": {"type": ["string", "null"]},
+        "real_name_confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "real_name_evidence": {"type": "array", "items": {"type": "string"}},
+        "candidate_real_names": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "confidence": {"type": "number"},
+              "method": {"type": "string", "enum": ["cross_domain_stylometry", "seed_and_propagate", "manual"]},
+              "flag": {"type": "string", "const": "INFERENCE — not confirmed"}
+            }
+          },
+          "description": "Below-threshold candidates. Never displayed at the same trust tier as a confirmed real_name."
+        }
+      }
+    },
+
+    "behavioral_fingerprint": {
+      "type": "object",
+      "properties": {
+        "stylometric_vector": {
+          "type": "array",
+          "items": {"type": "number"},
+          "description": "Character n-gram / function-word / punctuation feature vector, from the model trained on VeriDark."
+        },
+        "content_reuse_hashes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "ssdeep/simhash fuzzy hashes of listings/posts — catches copy-pasted content reused across a rebrand, independent of stylometry."
+        },
+        "chronotype": {
+          "type": "object",
+          "properties": {
+            "active_hours_utc": {"type": "array", "items": {"type": "integer"}},
+            "inferred_timezone_region": {"type": "string"}
+          }
+        },
+        "locale_signals": {
+          "type": "object",
+          "properties": {
+            "date_format": {"type": "string"},
+            "currency_convention": {"type": "string"},
+            "keyboard_layout_tells": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "modus_operandi": {
+          "type": "object",
+          "properties": {
+            "pricing_style": {"type": "string"},
+            "escrow_preference": {"type": "string"},
+            "avg_response_latency_minutes": {"type": "number"},
+            "message_template_signature": {"type": "string"}
+          }
+        }
+      }
+    },
+
+    "visual_fingerprint": {
+      "type": "object",
+      "properties": {
+        "image_phash": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Perceptual hashes of posted images — catches reused product/proof photos."
+        },
+        "file_metadata_signatures": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "EXIF data and document properties (author fields, software version) extracted from any posted image or file."
+        },
+        "face_detected": {"type": "boolean"},
+        "face_match_status": {
+          "type": "string",
+          "enum": ["not_applicable", "flagged_for_human_review", "human_reviewed_confirmed", "human_reviewed_rejected"],
+          "default": "not_applicable",
+          "description": "GUARDRAIL: a face-embedding match NEVER auto-merges two actors or auto-feeds attribution_confidence. It only ever reaches 'flagged_for_human_review' automatically; confirmation requires explicit human review."
+        }
+      }
+    },
+
+    "marketplace_metadata": {
+      "type": "object",
+      "properties": {
+        "shipping_origin_hints": {"type": "array", "items": {"type": "string"}},
+        "vendor_tier": {"type": "string"},
+        "join_date": {"type": "string", "format": "date"},
+        "sales_count": {"type": "integer"},
+        "feedback_leaks": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Buyer review text mentioning delivery timing/postmarks etc. — narrows geography even when the vendor themselves is careful."
+        }
+      }
+    },
+
+    "infrastructure": {
+      "type": "object",
+      "properties": {
+        "onion_services_linked": {"type": "array", "items": {"type": "string"}},
+        "tls_cert_hashes": {"type": "array", "items": {"type": "string"}},
+        "favicon_hashes": {"type": "array", "items": {"type": "string"}},
+        "web_template_hash": {
+          "type": "string",
+          "description": "Structural HTML/CSS fingerprint of a self-hosted storefront — catches reused templates across 'different' onion shops, independent of TLS/favicon reuse."
+        }
+      }
+    },
+
+    "graph": {
+      "type": "object",
+      "properties": {
+        "trust_edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "direction": {"type": "string", "enum": ["vouched_by", "vouches_for"]},
+              "actor_id": {"type": "string"},
+              "weight": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "description": "Extracted from vouch-pattern language and reputation scores. Feeds confidence diffusion and seed-and-propagate."
+        },
+        "category": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["Drugs", "Arms", "Stolen Data / Hacking Services", "Money Laundering", "Terror Financing", "Other"]
+          },
+          "description": "Taxonomy matching the spec's own example categories. Multi-label."
+        }
+      }
+    },
+
+    "provenance": {
+      "type": "object",
+      "required": ["sources", "last_scan_date", "attribution_confidence", "evidence_log"],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {"type": "string"},
+              "reliability": {
+                "type": "string",
+                "enum": ["A", "B", "C", "D", "E", "F"],
+                "description": "NATO Admiralty System reliability grade."
+              }
+            }
+          }
+        },
+        "last_scan_date": {"type": "string", "format": "date-time"},
+        "attribution_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Composite Fellegi-Sunter-style score, source-reliability-weighted. Thresholds: >0.7 confident link, 0.4-0.7 flagged for review, <0.4 discarded."
+        },
+        "evidence_log": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "signal": {"type": "string"},
+              "tier": {"type": "string", "enum": ["very_high", "high", "medium", "low"]},
+              "weight_contribution": {"type": "number"}
+            }
+          },
+          "description": "Human-readable breakdown of exactly which signals fired and how much each contributed. Makes the score explainable, not a black box. Satisfies the spec's 'attribution confidence' requirement."
+        }
+      }
+    }
+  }
+}
