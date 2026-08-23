@@ -26,7 +26,7 @@ An investigator can search a handle, wallet address, or PGP fingerprint and get 
 Three pairs, each owning a coherent domain across every build stage:
 
 - **Pair A — Core Backend** (data store, graph engine, fusion/scoring logic): Krishna, Chaitanya
-- **Pair B — Signal Intelligence** (text/entity extraction, stylometry, behavioral modeling): Varsha, Sakshi
+- **Pair B — Signal Intelligence** (text/entity extraction, stylometry, behavioral modeling): Varsharani, Sakshi
 - **Pair C — Product & Live Systems** (infra fingerprinting, dashboard, integration, demo): Vivek, Sahil
 
 ## Status
