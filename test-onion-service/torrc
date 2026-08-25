@@ -1,0 +1,18 @@
+# NETRA-X test onion service — Module 1 (infra-misconfig matcher) test target.
+# Run as a SEPARATE tor process from Tor Browser, using the same tor.exe binary:
+#
+#   "C:\Users\Vivek\Desktop\Tor Browser\Browser\TorBrowser\Tor\tor.exe" -f "C:\Users\Vivek\Desktop\NETRA-X\test-onion-service\torrc"
+#
+# Leave that window running. Your .onion address will appear in:
+#   test-onion-service\hidden_service\hostname
+# after the first successful start.
+#
+# This service is deliberately misconfigured for testing purposes only.
+# Never point this configuration at anything other than the local test-site
+# server started for this purpose.
+
+DataDirectory C:\Users\Vivek\Desktop\NETRA-X\test-onion-service\tor-data
+SocksPort 9150
+
+HiddenServiceDir C:\Users\Vivek\Desktop\NETRA-X\test-onion-service\hidden_service
+HiddenServicePort 80 127.0.0.1:8080

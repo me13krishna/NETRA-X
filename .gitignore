@@ -1,0 +1,13 @@
+# Tor hidden-service private keys and runtime state -- NEVER commit these
+test-onion-service/hidden_service/
+test-onion-service/tor-data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
