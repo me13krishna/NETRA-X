@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #05060A;
+  --foreground: #F4F4F7;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #05060A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1C1F2B;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8B2CFF;
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(11, 13, 20, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid #11131D;
+}
+
+.purple-glow {
+  box-shadow: 0 0 20px rgba(139, 44, 255, 0.15);
+}
+
+.cyan-glow {
+  box-shadow: 0 0 20px rgba(25, 217, 208, 0.15);
+}
