@@ -23,6 +23,7 @@ from packages.evidence.attribution import (
     RawEvidenceInput, compute_attribution, EvidenceFamily
 )
 from packages.evidence.reporting import generate_pdf_report
+from packages.evidence.stix_export import generate_stix_bundle, generate_csv_export
 from packages.graph.projection import GraphProjectionService
 from packages.schemas.models import (
     LoginRequest, TokenResponse, UserResponse, ActorSchema, AliasSchema,
@@ -412,6 +413,46 @@ def submit_analyst_review(id: str, req: ReviewRequest, db: Session = Depends(get
     return get_hypothesis(id, db, current_user)
 
 
+@app.post("/api/v1/review/{hypothesis_id}", response_model=HypothesisSchema)
+def submit_analyst_review_alias(hypothesis_id: str, req: ReviewRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Alias for /api/v1/hypotheses/{id}/review for backward compatibility."""
+    return submit_analyst_review(hypothesis_id, req, db, current_user)
+
+
+@app.post("/api/v1/attribution/evaluate")
+def evaluate_attribution_on_demand(raw_items: List[Dict[str, Any]], current_user: User = Depends(get_current_user)):
+    """Evaluates arbitrary evidence rows dynamically via LLR Attribution Engine."""
+    evidence_inputs = []
+    for idx, item in enumerate(raw_items):
+        evidence_inputs.append(RawEvidenceInput(
+            evidence_id=item.get("evidence_id", f"ev_dynamic_{idx}"),
+            family=item.get("family", "CONTENT_NLP"),
+            value=item.get("value", ""),
+            m_prob=float(item.get("m_prob", 0.80)),
+            u_prob=float(item.get("u_prob", 0.05)),
+            dependence_group=item.get("dependence_group", f"DEP_{idx}"),
+            source_uri=item.get("source_uri", "http://dynamic.onion"),
+            extraction_method=item.get("extraction_method", "manual_input"),
+            timestamp=item.get("timestamp", datetime.utcnow().isoformat()),
+            sha256=item.get("sha256", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            is_contradiction=bool(item.get("is_contradiction", False)),
+            contradiction_type=item.get("contradiction_type", ""),
+            abstain=bool(item.get("abstain", False))
+        ))
+    res = compute_attribution(evidence_inputs)
+    return {
+        "raw_log_lr": res.raw_log_lr,
+        "calibrated_prob": res.calibrated_prob,
+        "confidence_tier": res.confidence_tier,
+        "family_scores": res.family_scores,
+        "supporting_items": res.supporting_items,
+        "contradiction_items": res.contradiction_items,
+        "total_contradiction_penalty": res.total_contradiction_penalty,
+        "decision": res.decision.name if hasattr(res.decision, "name") else str(res.decision)
+    }
+
+
+
 # --- CASES & INVESTIGATIONS ---
 @app.get("/api/v1/investigations", response_model=List[CaseResponse])
 def list_cases(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -558,6 +599,38 @@ def export_json(db: Session = Depends(get_db), current_user: User = Depends(get_
     return {"version": "0.1.0", "exported_at": datetime.utcnow().isoformat(), "actors": [a.model_dump() for a in actors]}
 
 
+@app.get("/api/v1/exports/stix")
+def export_stix(hypothesis_id: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Exports threat intelligence in STIX 2.1 JSON bundle format."""
+    if not hypothesis_id:
+        hyp = db.query(Hypothesis).first()
+        hypothesis_id = hyp.id if hyp else "hyp_default"
+    h_schema = get_hypothesis(hypothesis_id, db, current_user)
+    actor_data = {"aliases": [h_schema.subject_label, "DarkSpectre", "CipherVoid"]}
+    stix_bundle = generate_stix_bundle(h_schema.model_dump(), actor_data)
+    return Response(
+        content=json.dumps(stix_bundle, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=NETRA-X_STIX2.1_{hypothesis_id[:8]}.json"}
+    )
+
+
+@app.get("/api/v1/exports/csv")
+def export_csv(hypothesis_id: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Exports attribution evidence breakdown in CSV format."""
+    if not hypothesis_id:
+        hyp = db.query(Hypothesis).first()
+        hypothesis_id = hyp.id if hyp else "hyp_default"
+    h_schema = get_hypothesis(hypothesis_id, db, current_user)
+    all_evidence = [item.model_dump() for item in (h_schema.supporting_evidence + h_schema.contradictions)]
+    csv_str = generate_csv_export(all_evidence)
+    return Response(
+        content=csv_str,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=NETRA-X_Evidence_{hypothesis_id[:8]}.csv"}
+    )
+
+
 # --- AUDIT LOG ENDPOINT ---
 @app.get("/api/v1/audit")
 def get_audit_logs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -581,6 +654,19 @@ def get_audit_logs(db: Session = Depends(get_db), current_user: User = Depends(g
             ).model_dump() for l in logs
         ]
     }
+
+
+@app.get("/api/v1/audit/verify")
+def verify_audit_chain_endpoint(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Explicit audit log hash-chain verification endpoint."""
+    valid, total_records, err_msg = verify_audit_chain(db)
+    return {
+        "chain_valid": valid,
+        "total_records": total_records,
+        "message": err_msg or "Cryptographic SHA-256 Hash Chain Intact & Verified",
+        "verified_at": datetime.utcnow().isoformat()
+    }
+
 
 
 # --- CONSTRAINED AI COPILOT ---

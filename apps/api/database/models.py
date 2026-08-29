@@ -221,3 +221,27 @@ class AuditLog(Base):
     payload_hash = Column(String(64), nullable=False)
     prev_hash = Column(String(64), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Source(Base):
+    __tablename__ = "sources"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(255), nullable=False)
+    source_type = Column(String(100), nullable=False)  # PASSIVE_ONION, FORUM_CRAWL, HONEYPOT, SYNTHETIC
+    lawful_basis = Column(String(100), nullable=False)  # passive_osint, synthetic_seed, honeypot
+    base_uri = Column(String(512), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Observation(Base):
+    __tablename__ = "observations"
+
+    id = Column(String(36), primary_key=True)
+    source_id = Column(String(36), ForeignKey("sources.id"), nullable=False, index=True)
+    raw_content = Column(Text, nullable=False)
+    content_hash = Column(String(64), nullable=False, index=True)
+    observed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    metadata_json = Column(Text, nullable=True)
+

@@ -1,0 +1,52 @@
+# NETRA-X Evidence Priors & Attribution Engine Configuration (mu_table.yaml)
+
+family_caps:
+  EXACT_IDENTITY: 10.0
+  FINANCIAL: 7.5
+  INFRASTRUCTURE: 5.0
+  CONTENT_NLP: 5.0
+  STYLOMETRY: 3.0
+  TEMPORAL: 2.0
+  SEMANTIC_HANDLE: 2.0
+
+dependence_discount_lambda: 0.25
+
+evidence_priors:
+  pgp_fingerprint_match:
+    family: EXACT_IDENTITY
+    m_prob: 0.99
+    u_prob: 0.0001
+    default_dependence_group: DEP_PGP_EXACT
+  btc_wallet_co_spending:
+    family: FINANCIAL
+    m_prob: 0.90
+    u_prob: 0.001
+    default_dependence_group: DEP_BTC_CLUSTER
+  xmr_wallet_observation:
+    family: FINANCIAL
+    m_prob: 0.0
+    u_prob: 1.0
+    abstain: true
+    default_dependence_group: DEP_XMR_ABSTAIN
+  favicon_mmh3_match:
+    family: INFRASTRUCTURE
+    m_prob: 0.85
+    u_prob: 0.005
+    default_dependence_group: DEP_INFRA_FAVICON
+  stylometry_same_author:
+    family: STYLOMETRY
+    m_prob: 0.75
+    u_prob: 0.02
+    default_dependence_group: DEP_STYLE_AUTHOR
+  handle_trigram_fuzzy:
+    family: SEMANTIC_HANDLE
+    m_prob: 0.65
+    u_prob: 0.05
+    default_dependence_group: DEP_HANDLE_FUZZY
+
+contradiction_penalties:
+  PGP Key Identity Conflict: 12.0
+  Temporal Impossibility: 15.0
+  Infrastructure Ownership Conflict: 8.0
+  Mutually Exclusive Identity: 10.0
+  Wallet Contradiction: 8.0

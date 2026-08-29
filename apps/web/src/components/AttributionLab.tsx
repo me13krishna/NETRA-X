@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import {
   GitMerge, ShieldCheck, AlertOctagon, CheckCircle2, XCircle, HelpCircle,
-  Download, Lock, FileText, ArrowRight
+  Download, Lock, FileText, ArrowRight, FileSpreadsheet, Shield
 } from "lucide-react";
 import { apiFetch, downloadReportPdf } from "../lib/api";
 import { EvidenceWaterfall } from "./EvidenceWaterfall";
@@ -44,7 +44,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
     setSubmitting(true);
     setReviewMessage(null);
     try {
-      const updated = await apiFetch<any>(`/api/v1/hypotheses/${hypothesis.id}/review`, {
+      const updated = await apiFetch<any>(`/api/v1/review/${hypothesis.id}`, {
         method: "POST",
         body: JSON.stringify({ decision, notes }),
       });
@@ -68,6 +68,14 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
     }
   };
 
+  const handleStixExport = () => {
+    window.open(`/api/v1/exports/stix?hypothesis_id=${hypothesis.id}`, "_blank");
+  };
+
+  const handleCsvExport = () => {
+    window.open(`/api/v1/exports/csv?hypothesis_id=${hypothesis.id}`, "_blank");
+  };
+
   const familyCaps: Record<string, number> = {
     "Exact Identity": 10.0,
     "Financial": 7.5,
@@ -77,26 +85,56 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Assessment Type Mandatory Warning Banner */}
+      <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3.5 flex items-center justify-between font-mono text-xs text-amber-300">
+        <div className="flex items-center space-x-2">
+          <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="font-bold">ASSESSMENT TYPE: INVESTIGATIVE LEAD</span>
+          <span className="text-netra-subtle">•</span>
+          <span>Analyst review required before legal submission</span>
+        </div>
+        <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[11px] font-bold border border-amber-500/30">
+          PROVENANCE PROTECTED
+        </span>
+      </div>
+
       {/* Header Banner */}
-      <div className="flex justify-between items-center border-b border-netra-border pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-netra-border pb-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-wide flex items-center space-x-2">
             <GitMerge className="w-6 h-6 text-netra-purple" />
             <span>Bayesian Attribution Intelligence Lab</span>
           </h1>
           <p className="text-xs text-netra-muted mt-0.5">
-            Log-Likelihood Ratio Fusion, Dependence Discounting & Isotonic Calibration
+            Log-Likelihood Ratio Fusion, Dependence Discounting ($\lambda=0.25$) & Isotonic Calibration
           </p>
         </div>
 
-        <button
-          onClick={handlePdfExport}
-          disabled={exporting}
-          className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-netra-purple text-white hover:bg-netra-purple/80 font-medium text-xs shadow-lg transition disabled:opacity-50"
-        >
-          <Download className="w-4 h-4" />
-          <span>{exporting ? "Generating PDF..." : "Export Signed PDF Report"}</span>
-        </button>
+        {/* Multi-Format Export Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleStixExport}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-netra-cyan/20 text-netra-cyan hover:bg-netra-cyan/30 font-mono text-xs border border-netra-cyan/40 transition"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>STIX 2.1 JSON</span>
+          </button>
+          <button
+            onClick={handleCsvExport}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-mono text-xs border border-emerald-500/40 transition"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>CSV Ledger</span>
+          </button>
+          <button
+            onClick={handlePdfExport}
+            disabled={exporting}
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-netra-purple text-white hover:bg-netra-purple/80 font-medium text-xs shadow-lg transition disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            <span>{exporting ? "Generating..." : "Export Signed PDF"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Candidate Pair Header */}
@@ -126,69 +164,44 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
             }`}>
               STATUS: {hypothesis.status}
             </span>
-            <div className="text-xs text-netra-muted">
-              Raw LLR Score: <span className="text-white font-mono font-bold">{hypothesis.raw_log_lr.toFixed(2)}</span>
+            <div className="text-xs text-netra-muted font-mono">
+              Raw LLR Score: <span className="text-white font-bold">{hypothesis.raw_log_lr.toFixed(2)}</span>
             </div>
           </div>
         </div>
 
         {/* Calibrated Probability Gauge */}
         <div className="p-4 bg-netra-surface border border-netra-border rounded-xl space-y-2">
-          <div className="flex justify-between items-center text-xs">
+          <div className="flex justify-between items-center text-xs font-mono">
             <span className="text-netra-muted font-medium">ISOTONIC CALIBRATED POSTERIOR PROBABILITY</span>
-            <span className="font-bold text-netra-valid text-sm font-mono">
+            <span className="font-bold text-netra-valid text-sm">
               {(hypothesis.calibrated_prob * 100).toFixed(1)}% ({hypothesis.confidence_tier})
             </span>
           </div>
 
-          <div className="w-full h-3 bg-netra-bg rounded-full overflow-hidden border border-netra-border flex">
+          <div className="w-full h-3.5 bg-netra-bg rounded-full overflow-hidden border border-netra-border flex">
             <div
-              className="h-full bg-gradient-to-r from-netra-cyan via-netra-purple to-netra-valid transition-all duration-500"
+              className="h-full bg-gradient-to-r from-netra-cyan via-netra-purple to-netra-valid transition-all duration-500 rounded-full"
               style={{ width: `${hypothesis.calibrated_prob * 100}%` }}
             />
           </div>
         </div>
       </div>
 
-      {/* Main Grid: Family Breakdown + Evidence Waterfall & Analyst Decision Panel */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* Left Column (2 Cols): Evidence Waterfall & Family Caps */}
-        <div className="col-span-2 space-y-6">
-          {/* Family Caps Breakdown */}
-          <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-white border-b border-netra-border pb-2">
-              Evidence Family Contribution Caps
-            </h2>
-
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(familyCaps).map(([fam, cap]) => {
-                const score = hypothesis.family_breakdown[fam] || 0;
-                const pct = Math.min((score / cap) * 100, 100);
-                return (
-                  <div key={fam} className="p-3 bg-netra-surface border border-netra-border rounded-lg space-y-1.5">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span className="text-netra-muted">{fam}</span>
-                      <span className="text-white font-mono">+{score.toFixed(1)} / {cap.toFixed(1)}</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-netra-bg rounded-full overflow-hidden">
-                      <div className="h-full bg-netra-purple rounded-full" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Evidence Waterfall */}
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column (2 Cols): Evidence Waterfall */}
+        <div className="lg:col-span-2 space-y-6">
           <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-white border-b border-netra-border pb-2 flex items-center justify-between">
-              <span>Evidence Waterfall Ledger</span>
-              <span className="text-xs text-netra-subtle font-mono">DEPENDENCE DISCOUNT $\lambda=0.15$</span>
+              <span>Authoritative Evidence Waterfall</span>
+              <span className="text-xs text-netra-subtle font-mono">DISCOUNT FACTOR $\lambda=0.25$</span>
             </h2>
 
             <EvidenceWaterfall
               supporting={hypothesis.supporting_evidence}
               contradictions={hypothesis.contradictions}
+              familyBreakdown={hypothesis.family_breakdown}
             />
           </div>
         </div>
@@ -202,7 +215,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
             </h2>
 
             <p className="text-xs text-netra-muted leading-relaxed">
-              Per strict architecture constraints, AI generates hypotheses only. You must evaluate the evidence waterfall and issue an explicit decision.
+              AI model outputs generate hypotheses only. Analysts must evaluate the evidence waterfall and record an immutable decision.
             </p>
 
             <div className="space-y-2">
@@ -251,7 +264,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
               </button>
             </div>
 
-            <div className="pt-3 border-t border-netra-border text-[11px] text-netra-subtle flex items-center space-x-1.5">
+            <div className="pt-3 border-t border-netra-border text-[11px] text-netra-subtle flex items-center space-x-1.5 font-mono">
               <Lock className="w-3.5 h-3.5 text-netra-valid" />
               <span>Decisions append to SHA-256 audit chain.</span>
             </div>
