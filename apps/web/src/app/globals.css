@@ -250,3 +250,27 @@ body::before {
   100% { opacity: 1; letter-spacing: normal; }
 }
 .data-arrive { animation: data-arrive 340ms ease-out both; }
+
+/* --- GLITCH, SOFT VARIANT ----------------------------------------------
+   The full .glitch splits both colour channels across the whole glyph run.
+   On a short wordmark that is a flicker; on a full-width heading it reads as
+   the title changing colour, which is distracting on a screen an analyst
+   holds for hours. This variant keeps the same idea at heading scale: one
+   channel, smaller displacement, a shorter window, and a longer gap. */
+@keyframes glitch-soft-r {
+  0%, 96%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); opacity: 0; }
+  97%  { clip-path: inset(20% 0 58% 0); transform: translate(1px, 0); opacity: 0.55; }
+  98.5%{ clip-path: inset(64% 0 18% 0); transform: translate(-1px, 0); opacity: 0.45; }
+}
+.glitch-soft { position: relative; display: inline-block; }
+.glitch-soft::before {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: #E61919;
+  pointer-events: none;
+  animation: glitch-soft-r 11s steps(1) infinite;
+}
+/* No green channel on the soft variant -- terminal green is reserved for
+   status readouts, and borrowing it for decoration dilutes that meaning. */
+.glitch-soft::after { content: none; }
