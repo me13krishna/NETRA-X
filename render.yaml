@@ -1,0 +1,50 @@
+services:
+  # ----------------------------------------------------------------------------
+  # FastAPI Backend Service (NETRA-X API)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: netra-api
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install --upgrade pip && pip install -e ."
+    startCommand: "uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHONPATH
+        value: "."
+      - key: NETRAX_ALLOW_EPHEMERAL_SECRET
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: netra-db
+          property: connectionString
+      - key: CORS_ORIGINS
+        value: "https://netra-web.onrender.com,http://localhost:3000"
+
+  # ----------------------------------------------------------------------------
+  # Next.js 14 Frontend Service (NETRA-X Web Interface)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: netra-web
+    env: node
+    rootDir: apps/web
+    region: oregon
+    plan: free
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: netra-api
+          property: host
+
+databases:
+  # ----------------------------------------------------------------------------
+  # Authoritative PostgreSQL Storage Ledger
+  # ----------------------------------------------------------------------------
+  - name: netra-db
+    databaseName: netrax_db
+    user: netra
+    region: oregon
+    plan: free

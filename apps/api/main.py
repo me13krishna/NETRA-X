@@ -59,6 +59,7 @@ CORS_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
@@ -68,31 +69,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 def _cap_key(family: str) -> str:
-    """Map a stored family label to its FAMILY_CAPS key.
-
-    The ledger stores display labels ("Exact Identity", "Content/NLP") while
-    FAMILY_CAPS is keyed by identifier ("EXACT_IDENTITY", "CONTENT_NLP"). A
-    direct lookup misses on every family and silently applies no cap, so the
-    normalisation is required, not cosmetic.
-    """
+    """Map a stored family label to its FAMILY_CAPS key."""
     return family.strip().upper().replace("/", "_").replace(" ", "_")
 
 
 def capped_family_scores(raw_scores: dict) -> dict:
-    """Apply evidence-family caps to per-family sums before returning them.
-
-    compute_attribution() caps each family at min(sum, cap) before summing into
-    raw_log_lr, but the API rebuilt family_breakdown from the stored per-item
-    contributions without re-applying the cap. The response then contradicted
-    itself -- families summing to 24.76 against a raw_log_lr of 9.00 -- and the
-    Attribution Lab drew Infrastructure at 5.14/5.0 and Stylometry at 3.62/3.0,
-    bars overflowing their own limits.
-
-    Family caps are the mechanism that stops a weak signal class dominating an
-    attribution, so rendering them as violated undermines the central claim of
-    the model. A family with no configured cap is returned unchanged rather
-    than dropped.
-    """
     return {
         family: round(min(score, FAMILY_CAPS.get(_cap_key(family), score)), 3)
         for family, score in raw_scores.items()
@@ -125,6 +106,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 @app.on_event("startup")
 def on_startup():
     init_db_sync()
+    try:
+        from seed.generator import seed_database
+        seed_database()
+    except Exception as e:
+        print(f"[!] Database startup seed check: {e}")
 
 
 @app.get("/health")

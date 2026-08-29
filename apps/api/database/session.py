@@ -15,11 +15,23 @@ from .models import Base
 DEFAULT_DB_URL = "sqlite+aiosqlite:///./netrax.db"
 DEFAULT_DB_URL_SYNC = "sqlite:///./netrax.db"
 
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
-DATABASE_URL_SYNC = os.getenv("DATABASE_URL_SYNC", DEFAULT_DB_URL_SYNC)
+# Normalize environment DB URLs (Render provides postgres:// or postgresql://)
+raw_db_url = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
+
+if raw_db_url.startswith("postgres://"):
+    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    raw_sync_default = raw_db_url.replace("postgres://", "postgresql://", 1)
+elif raw_db_url.startswith("postgresql://") and not raw_db_url.startswith("postgresql+asyncpg://"):
+    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    raw_sync_default = raw_db_url
+else:
+    DATABASE_URL = raw_db_url
+    raw_sync_default = DEFAULT_DB_URL_SYNC
+
+DATABASE_URL_SYNC = os.getenv("DATABASE_URL_SYNC", raw_sync_default)
 
 # If PostgreSQL requested but psycopg2 missing or offline, fall back to SQLite
-if "postgresql" in DATABASE_URL_SYNC:
+if "postgresql" in DATABASE_URL_SYNC or "postgres" in DATABASE_URL_SYNC:
     try:
         import psycopg2
     except ImportError:
