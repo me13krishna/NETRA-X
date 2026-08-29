@@ -9,6 +9,7 @@ RUN npm ci
 
 # Copy source files
 COPY . .
+RUN mkdir -p /app/public
 
 # Build Next.js app
 ENV NEXT_TELEMETRY_DISABLED=1
