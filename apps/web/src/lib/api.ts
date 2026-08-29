@@ -13,8 +13,17 @@
  *   downloadReportPdf — AttributionLab (Export Signed PDF Report)
  */
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+function resolveApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined" && window.location.hostname.includes("onrender")) {
+    return "https://netra-x.onrender.com";
+  }
+  return "http://localhost:8000";
+}
+
+const API_BASE = resolveApiBase();
 
 const TOKEN_KEY = "netrax_access_token";
 
