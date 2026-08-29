@@ -1,14 +1,16 @@
 """
-NETRA-X Stylometry Package
-Provides feature extraction, episode aggregation (SYSML-style), and same-author verification with word count abstention.
+Stylometry package initialization.
 """
-
-from .pipeline import StylometryFeatureExtractor, StylometryEpisode
-from .verifier import StylometryVerifier, StylometryResult
+from packages.stylometry.features import extract_stylometric_features, extract_word_tokens
+from packages.stylometry.episodes import StylometryEpisode, MIN_WORD_COUNT_THRESHOLD
+from packages.stylometry.verify import verify_author_stylometry, compute_burrows_delta, compute_cosine_similarity
 
 __all__ = [
-    "StylometryFeatureExtractor",
+    "extract_stylometric_features",
+    "extract_word_tokens",
     "StylometryEpisode",
-    "StylometryVerifier",
-    "StylometryResult"
+    "MIN_WORD_COUNT_THRESHOLD",
+    "verify_author_stylometry",
+    "compute_burrows_delta",
+    "compute_cosine_similarity",
 ]

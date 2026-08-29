@@ -96,7 +96,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
                     {hasContradiction && (
                       <span className="bg-netra-red/20 text-netra-red px-2.5 py-1 rounded-md border border-netra-red/40 font-bold flex items-center space-x-1">
                         <AlertOctagon className="w-3.5 h-3.5" />
-                        <span>Contradiction Flagged</span>
+                        <span className="contradiction-alert">Contradiction Flagged</span>
                       </span>
                     )}
                     <span className={`px-2.5 py-1 rounded-md border font-bold ${

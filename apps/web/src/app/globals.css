@@ -2,48 +2,275 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Tactical Telemetry substrate.
+
+  Removed from the previous sheet, per the industrial-brutalist rules:
+    .glass-panel   translucency + backdrop-blur is prohibited (§4). It was
+                   applied 13 times and is the single most recognisable
+                   generic-AI surface treatment.
+    .purple-glow   soft coloured drop shadows are prohibited (§4). Depth here
+                   comes from hard 1px rules, not bloom.
+    .cyan-glow     same, and it was the second accent colour besides.
+*/
+
 :root {
-  --background: #05060A;
-  --foreground: #F4F4F7;
+  --background: #0A0A0A;   /* deactivated CRT, not pure black */
+  --foreground: #EAEAEA;   /* white phosphor */
+  --hazard: #E61919;       /* the only accent in the system */
+  --rule: #282828;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans), Archivo, system-ui, sans-serif;
   overflow-x: hidden;
+  /* Mechanical noise: a low-opacity grain over the whole root so the surface
+     reads as a physical display rather than a flat vector fill (§7). */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* CRT scanlines. Deliberately faint -- this has to survive an eight-hour
+   analyst shift, so it suggests a phosphor sweep rather than performing one.
+   Pointer-events none so it never intercepts a click. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.16) 2px,
+    rgba(0, 0, 0, 0.16) 4px
+  );
 }
 
-::-webkit-scrollbar-track {
-  background: #05060A;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-::-webkit-scrollbar-thumb {
-  background: #1C1F2B;
-  border-radius: 3px;
+/* Square, utilitarian scrollbar. A rounded thumb undercuts the 90-degree rule
+   on every scrollable panel. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0A0A0A; border-left: 1px solid var(--rule); }
+::-webkit-scrollbar-thumb { background: #2E2E2E; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--hazard); }
+
+/* Keyboard focus must stay visible -- an accessibility requirement, not a
+   styling preference. Hard hazard-red outline, no glow. */
+:focus-visible {
+  outline: 2px solid var(--hazard);
+  outline-offset: 1px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #8B2CFF;
-}
-
-/* Glassmorphism utility */
+/*
+  Replaces .glass-panel at the same class name so the 13 call sites keep
+  working. Opaque, hard-ruled, square: a compartment stamped out of the
+  substrate rather than frosted glass floating above it.
+*/
 .glass-panel {
-  background: rgba(11, 13, 20, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid #11131D;
+  background: #141414;
+  border: 1px solid var(--rule);
+  backdrop-filter: none;
 }
 
-.purple-glow {
-  box-shadow: 0 0 20px rgba(139, 44, 255, 0.15);
+/* Blueprint grid: 1px gap over a rule-coloured parent produces razor-thin
+   dividing lines with no per-child border declarations (§8.1). */
+.blueprint-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--rule);
+}
+.blueprint-grid > * {
+  background: #141414;
 }
 
-.cyan-glow {
-  box-shadow: 0 0 20px rgba(25, 217, 208, 0.15);
+/* Uppercase monospace metadata -- unit IDs, section labels, coordinates. */
+.telemetry-label {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8A8A8A;
 }
+
+/* ASCII framing: [ SECTION NAME ] as structural syntax rather than decoration. */
+.bracketed::before { content: "[ "; color: var(--hazard); }
+.bracketed::after  { content: " ]"; color: var(--hazard); }
+
+/* Thick hazard stripe for the assessment banner. Industrial warning tape. */
+.hazard-stripe {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(230, 25, 25, 0.14) 0px,
+    rgba(230, 25, 25, 0.14) 10px,
+    transparent 10px,
+    transparent 20px
+  );
+}
+
+/* Digits in columns must not jitter as they update. */
+.font-mono, [class*="font-mono"], table, output, data {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Macro-typography: solid architectural blocks, compressed leading. */
+h1, h2 {
+  font-family: var(--font-display), "Archivo Black", Impact, sans-serif;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+/* Hover/press feedback. Transform only -- GPU-composited, and never animating
+   layout properties. */
+button, a[role="button"] {
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, transform 120ms ease;
+}
+button:active, a[role="button"]:active {
+  transform: translateY(1px);
+}
+
+/* ==========================================================================
+   MOTION
+   MOTION_INTENSITY: 6 (raised from the 2-3 the dial table gives a
+   regulated/analyst tool, because CRT degradation is part of the aesthetic
+   brief here).
+
+   Every effect below states what it communicates. The skill's rule is that
+   "it looked cool" is not a valid reason, and that perpetual loops on every
+   element read as filler -- so ambient motion is confined to things that are
+   genuinely live (status, contradictions), and everything else moves once, on
+   entry, then stops.
+
+   All of it is disabled by the prefers-reduced-motion block above.
+   ========================================================================== */
+
+/* --- GLITCH ------------------------------------------------------------
+   Communicates: brand identity + the degraded-signal premise of the product.
+   Fires on hover and on a long idle interval, never continuously -- a
+   permanently glitching wordmark is noise, not character. */
+@keyframes glitch-shift-r {
+  0%, 92%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+  93%  { clip-path: inset(12% 0 62% 0); transform: translate(2px, -1px); }
+  95%  { clip-path: inset(48% 0 21% 0); transform: translate(-2px, 1px); }
+  97%  { clip-path: inset(78% 0 4% 0);  transform: translate(1px, 0); }
+}
+@keyframes glitch-shift-l {
+  0%, 92%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+  93%  { clip-path: inset(70% 0 8% 0);  transform: translate(-2px, 1px); }
+  95%  { clip-path: inset(26% 0 55% 0); transform: translate(2px, -1px); }
+  97%  { clip-path: inset(5% 0 80% 0);  transform: translate(-1px, 0); }
+}
+
+.glitch { position: relative; display: inline-block; }
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  pointer-events: none;
+}
+.glitch::before { color: #E61919; animation: glitch-shift-r 6s steps(1) infinite; }
+.glitch::after  { color: #4AF626; animation: glitch-shift-l 6s steps(1) infinite; }
+.glitch:hover::before { animation-duration: 0.7s; }
+.glitch:hover::after  { animation-duration: 0.7s; }
+
+/* --- CRT SWEEP ---------------------------------------------------------
+   Communicates: the display is live and refreshing. One bright line, slow
+   enough to read as ambient hardware rather than a progress indicator. */
+@keyframes crt-sweep { 0% { top: -20%; } 100% { top: 120%; } }
+body::before {
+  content: "";
+  position: fixed;
+  left: 0; right: 0;
+  height: 18vh;
+  pointer-events: none;
+  z-index: 9998;
+  background: linear-gradient(180deg, transparent, rgba(234, 234, 234, 0.028), transparent);
+  animation: crt-sweep 9s linear infinite;
+}
+
+/* --- BOOT ENTRY --------------------------------------------------------
+   Communicates: state transition. The console powering up after auth, and
+   panels arriving in sequence rather than all at once. Runs once on mount. */
+@keyframes boot-in {
+  0%   { opacity: 0; transform: translateY(6px); clip-path: inset(0 0 100% 0); }
+  60%  { opacity: 1; clip-path: inset(0 0 0 0); }
+  100% { opacity: 1; transform: translateY(0); clip-path: inset(0 0 0 0); }
+}
+.boot-in { animation: boot-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.boot-in-1 { animation-delay: 60ms; }
+.boot-in-2 { animation-delay: 130ms; }
+.boot-in-3 { animation-delay: 200ms; }
+
+/* --- BAR FILL ----------------------------------------------------------
+   Communicates: the value being measured, not merely reported. The waterfall
+   is the core read on the Attribution Lab, so it earns an entry animation. */
+@keyframes bar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.bar-fill {
+  transform-origin: left center;
+  animation: bar-fill 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* --- LIVE STATUS -------------------------------------------------------
+   Communicates: this readout is current. Sanctioned perpetual use -- it is a
+   status indicator, which is exactly the case the skill allows a loop for. */
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.live-dot { animation: live-pulse 2.4s ease-in-out infinite; }
+
+/* --- CONTRADICTION ALERT -----------------------------------------------
+   Communicates: hierarchy. A contradiction is the single most important thing
+   an analyst can miss, so it gets the only aggressive motion in the system --
+   and only when one is actually present. */
+@keyframes hazard-flicker {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.62; }
+}
+.contradiction-alert { animation: hazard-flicker 1.6s steps(2) infinite; }
+
+/* --- DATA ARRIVAL ------------------------------------------------------
+   Communicates: feedback that a value loaded, distinguishing fresh telemetry
+   from a stale screen. Fires once. */
+@keyframes data-arrive {
+  0%   { opacity: 0; letter-spacing: 0.3em; }
+  100% { opacity: 1; letter-spacing: normal; }
+}
+.data-arrive { animation: data-arrive 340ms ease-out both; }
+
+/* --- GLITCH, SOFT VARIANT ----------------------------------------------
+   The full .glitch splits both colour channels across the whole glyph run.
+   On a short wordmark that is a flicker; on a full-width heading it reads as
+   the title changing colour, which is distracting on a screen an analyst
+   holds for hours. This variant keeps the same idea at heading scale: one
+   channel, smaller displacement, a shorter window, and a longer gap. */
+@keyframes glitch-soft-r {
+  0%, 96%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); opacity: 0; }
+  97%  { clip-path: inset(20% 0 58% 0); transform: translate(1px, 0); opacity: 0.55; }
+  98.5%{ clip-path: inset(64% 0 18% 0); transform: translate(-1px, 0); opacity: 0.45; }
+}
+.glitch-soft { position: relative; display: inline-block; }
+.glitch-soft::before {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: #E61919;
+  pointer-events: none;
+  animation: glitch-soft-r 11s steps(1) infinite;
+}
+/* No green channel on the soft variant -- terminal green is reserved for
+   status readouts, and borrowing it for decoration dilutes that meaning. */
+.glitch-soft::after { content: none; }

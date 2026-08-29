@@ -38,11 +38,11 @@ export const AppShell: React.FC<AppShellProps> = ({
       {/* Top Bar */}
       <header className="h-14 border-b border-netra-border bg-netra-surface px-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-netra-purple to-netra-cyan flex items-center justify-center font-bold text-white shadow-lg">
+          <div className="w-8 h-8 rounded-lg bg-netra-purple flex items-center justify-center font-bold text-white shadow-lg">
             N
           </div>
           <div>
-            <span className="font-bold tracking-wider text-base text-white">NETRA-X</span>
+            <span data-text="NETRA-X" className="glitch font-bold tracking-wider text-base text-white">NETRA-X</span>
             <span className="ml-2 text-xs text-netra-cyan font-mono bg-netra-cyan/10 px-2 py-0.5 rounded border border-netra-cyan/30">
               v0.1 MVP
             </span>
@@ -52,7 +52,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2 text-xs font-mono text-netra-valid bg-netra-valid/10 px-2.5 py-1 rounded border border-netra-valid/30">
             <Activity className="w-3.5 h-3.5 animate-pulse" />
-            <span>LEDGER: ONLINE (PROVENANCE VERIFIED)</span>
+            <span><span className="live-dot">&#9679;</span> LEDGER: ONLINE (PROVENANCE VERIFIED)</span>
           </div>
 
           <button

@@ -42,6 +42,14 @@ dev = [
     "flake8>=7.0.0",
 ]
 
+# Explicit package list. Setuptools auto-discovery cannot handle a flat
+# multi-package layout -- it finds apps/, packages/, workers/, bench/, seed/
+# and refuses to guess, so `pip install -e .` (and therefore `make setup`,
+# step 1 of the README) failed with "Multiple top-level packages discovered".
+[tool.setuptools.packages.find]
+include = ["apps*", "packages*", "workers*", "seed*", "bench*"]
+exclude = ["tests*", "docs*", "infra*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

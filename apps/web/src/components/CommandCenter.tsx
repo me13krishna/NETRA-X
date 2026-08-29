@@ -63,7 +63,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
       <div className="flex justify-between items-end border-b border-netra-border pb-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-wide flex items-center space-x-2">
-            <span>Intelligence Command Center</span>
+            <span data-text="Intelligence Command Center" className="glitch-soft">Intelligence Command Center</span>
           </h1>
           <p className="text-xs text-netra-muted mt-1">
             Real-time Threat Actor Footprints, Evidence Provenance & Attribution Queue
@@ -78,39 +78,39 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
 
       {/* Hero Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel">
+        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel boot-in boot-in-1">
           <div className="flex justify-between items-center text-netra-muted text-xs font-medium">
             <span>Tracked Threat Actors</span>
             <Users className="w-4 h-4 text-netra-purple" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{loading ? "..." : actorsCount}</div>
+          <div className="text-3xl font-bold text-white font-mono data-arrive">{loading ? "..." : actorsCount}</div>
           <div className="text-[11px] text-netra-cyan">3 Aliases • 1 PGP Key • 2 BTC Wallets</div>
         </div>
 
-        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel">
+        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel boot-in boot-in-2">
           <div className="flex justify-between items-center text-netra-muted text-xs font-medium">
             <span>Evidence Artifacts</span>
             <FileText className="w-4 h-4 text-netra-cyan" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{loading ? "..." : evidenceCount}</div>
+          <div className="text-3xl font-bold text-white font-mono data-arrive">{loading ? "..." : evidenceCount}</div>
           <div className="text-[11px] text-netra-valid">100% SHA-256 Hash Verified</div>
         </div>
 
-        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel">
+        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel boot-in boot-in-3">
           <div className="flex justify-between items-center text-netra-muted text-xs font-medium">
             <span>Attribution Hypotheses</span>
             <GitMerge className="w-4 h-4 text-netra-amber" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">{loading ? "..." : hypotheses.length}</div>
+          <div className="text-3xl font-bold text-white font-mono data-arrive">{loading ? "..." : hypotheses.length}</div>
           <div className="text-[11px] text-netra-amber">{openHypotheses.length} Awaiting Analyst Review</div>
         </div>
 
-        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel">
+        <div className="bg-netra-card border border-netra-border p-4 rounded-xl space-y-2 glass-panel boot-in boot-in-3">
           <div className="flex justify-between items-center text-netra-muted text-xs font-medium">
             <span>Active Cases</span>
             <ShieldAlert className="w-4 h-4 text-netra-valid" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono">1</div>
+          <div className="text-3xl font-bold text-white font-mono data-arrive">1</div>
           <div className="text-[11px] text-netra-muted">Operation ShadowByte</div>
         </div>
       </div>
@@ -128,7 +128,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
 
         {/* System Health & Infrastructure Panel (1 Col) */}
         <div className="space-y-6">
-          <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4">
+          <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4 boot-in boot-in-2">
             <h2 className="font-semibold text-sm text-white flex items-center space-x-2 border-b border-netra-border pb-3">
               <Cpu className="w-4 h-4 text-netra-cyan" />
               <span>Multi-Modal Service Mesh</span>
@@ -157,9 +157,9 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-3">
+          <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-3 boot-in boot-in-3">
             <h2 className="font-semibold text-sm text-white flex items-center space-x-2 border-b border-netra-border pb-3">
-              <Activity className="w-4 h-4 text-netra-valid" />
+              <Activity className="w-4 h-4 text-netra-valid live-dot" />
               <span>Infrastructure Leaks</span>
             </h2>
             <div className="p-3 bg-netra-surface rounded border border-netra-border text-xs space-y-1 font-mono">

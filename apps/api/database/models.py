@@ -211,15 +211,42 @@ class AnalystReview(Base):
 
 
 class AuditLog(Base):
+    """Append-only, hash-chained audit log.
+
+    Three columns were added to make the tamper-evidence claim real rather than
+    nominal. Before, verification only checked that prev_hash values linked up;
+    it never recomputed anything from the stored row, and the payload was not
+    retained at all. That meant editing `action`, `actor_user_id` or
+    `created_at` on any row was undetectable, and there was nothing to audit
+    because the payload itself was discarded after hashing.
+
+      seq         Monotonic position. Ordering previously depended on
+                  created_at, so a clock change or skew could reorder the chain
+                  and break verification on correct data. UNIQUE, so two
+                  concurrent writers collide instead of silently forking.
+
+      payload     The payload itself. You cannot audit what you did not keep,
+                  and payload_hash cannot be re-derived without it.
+
+      entry_hash  Digest over the row's own fields plus prev_hash. This is what
+                  the next entry chains to, so any edited field breaks the
+                  chain from that point on.
+
+    See packages/evidence/audit.py.
+    """
+
     __tablename__ = "audit_logs"
 
     id = Column(String(36), primary_key=True)
+    seq = Column(Integer, nullable=False, unique=True, index=True)
     actor_user_id = Column(String(36), nullable=False, index=True)
     action = Column(String(100), nullable=False)
     resource_type = Column(String(100), nullable=False)
     resource_id = Column(String(36), nullable=False)
+    payload = Column(Text, nullable=True)
     payload_hash = Column(String(64), nullable=False)
     prev_hash = Column(String(64), nullable=False)
+    entry_hash = Column(String(64), nullable=False, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

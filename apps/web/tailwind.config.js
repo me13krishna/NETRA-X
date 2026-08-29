@@ -1,4 +1,15 @@
 /** @type {import('tailwindcss').Config} */
+
+// Tactical Telemetry substrate (industrial-brutalist §2.2): dark CRT ground,
+// white phosphor foreground, ONE accent. Chosen over Swiss Industrial Print
+// because this is an analyst console, not a document -- and §2 says commit to
+// one archetype, never mix.
+//
+// The palette keys keep their old names on purpose. `netra-purple` and
+// `netra-cyan` appear ~130 times across the components; remapping the values
+// converts every one of them at once instead of hand-editing class strings and
+// missing some. The names now lie slightly -- worth renaming later, but not at
+// the cost of a 200-line diff nobody can review.
 module.exports = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,27 +20,66 @@ module.exports = {
     extend: {
       colors: {
         netra: {
-          bg: "#05060A",
-          surface: "#080912",
-          card: "#0B0D14",
-          border: "#11131D",
-          hover: "#1C1F2B",
-          purple: "#8B2CFF",
-          deepViolet: "#5B18D6",
-          cyan: "#19D9D0",
-          text: "#F4F4F7",
-          muted: "#A6A8B3",
-          subtle: "#666A78",
-          valid: "#10B981",
-          amber: "#F59E0B",
-          red: "#EF4444"
-        }
+          // Deactivated CRT, not pure black (#000 reads as a hole, not a screen)
+          bg: "#0A0A0A",
+          surface: "#111111",
+          card: "#141414",
+          border: "#282828",
+          hover: "#1E1E1E",
+
+          // THE accent. Aviation/hazard red -- the only chromatic colour in the
+          // system. Was electric purple #8B2CFF, which with the cyan secondary
+          // was the "AI gradient" signature the redesign audit calls the most
+          // common tell.
+          purple: "#E61919",
+          deepViolet: "#A31212",
+
+          // Was a second accent (#19D9D0). Demoted to white phosphor so the
+          // ~38 `netra-cyan` usages become plain primary text. One accent only.
+          cyan: "#EAEAEA",
+
+          text: "#EAEAEA",
+          muted: "#8A8A8A",
+          subtle: "#5A5A5A",
+
+          // Terminal green, permitted for status readouts only -- never as a
+          // general text colour.
+          valid: "#4AF626",
+          amber: "#C8811A",
+          red: "#E61919",
+        },
       },
+
+      // 90-degree corners, no exceptions. `rounded-xl` and friends still parse,
+      // they just resolve to 0 -- so all 75 existing usages become square
+      // without touching a component.
+      borderRadius: {
+        none: "0", sm: "0", DEFAULT: "0", md: "0",
+        lg: "0", xl: "0", "2xl": "0", "3xl": "0", full: "0",
+      },
+
       fontFamily: {
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif']
-      }
+        // Macro-typography: heavy neo-grotesque for structural headers.
+        display: ["var(--font-display)", "Archivo Black", "Impact", "sans-serif"],
+        sans: ["var(--font-sans)", "Archivo", "system-ui", "sans-serif"],
+        // Micro-typography: monospace carries all metadata, IDs and telemetry.
+        mono: ["var(--font-mono)", "JetBrains Mono", "IBM Plex Mono", "monospace"],
+      },
+
+      letterSpacing: {
+        // Tight enough that headline glyphs form solid architectural blocks.
+        tightest: "-0.045em",
+        // Generous tracking for uppercase labels, simulating a terminal matrix.
+        telemetry: "0.12em",
+      },
+
+      boxShadow: {
+        // Soft drop shadows are prohibited. A hard 1px offset reads as a
+        // registration mark rather than depth.
+        hard: "2px 2px 0 0 #000000",
+        none: "none",
+      },
     },
   },
   plugins: [],
-}
+};

@@ -1,0 +1,155 @@
+/**
+ * NETRA-X — API client.
+ *
+ * This module was missing from the repository: ten components import it and
+ * the production build failed with "Module not found: Can't resolve
+ * '../lib/api'". It is reconstructed here from the call sites and from the
+ * live FastAPI contract, so the frontend compiles and runs.
+ *
+ * Exports required by existing components:
+ *   apiFetch          — src/app/page.tsx and 9 components
+ *   setAuthToken      — LoginScreen (on login), page.tsx (on logout)
+ *   getAuthToken      — page.tsx (session restore)
+ *   downloadReportPdf — AttributionLab (Export Signed PDF Report)
+ */
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+
+const TOKEN_KEY = "netrax_access_token";
+
+/**
+ * In-memory mirror of the token.
+ *
+ * The token is also persisted to localStorage so a page reload keeps the
+ * session, but localStorage is unavailable during server-side rendering and
+ * can throw in privacy modes -- hence the guards and the in-memory fallback.
+ */
+let tokenCache: string | null = null;
+
+export function getAuthToken(): string | null {
+  if (tokenCache) return tokenCache;
+  if (typeof window === "undefined") return null;
+  try {
+    tokenCache = window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    tokenCache = null;
+  }
+  return tokenCache;
+}
+
+/** Store the token. Passing "" clears it -- this is how logout is implemented. */
+export function setAuthToken(token: string): void {
+  tokenCache = token || null;
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      window.localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      window.localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // Storage unavailable (private mode, blocked cookies). The in-memory
+    // token still works for the life of the page.
+  }
+}
+
+/** FastAPI returns errors as {"detail": "..."} -- surface that, not "500". */
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const body = await res.json();
+    if (typeof body?.detail === "string") return body.detail;
+    if (Array.isArray(body?.detail)) {
+      // Pydantic validation errors
+      return body.detail
+        .map((d: any) => `${(d.loc ?? []).join(".")}: ${d.msg}`)
+        .join("; ");
+    }
+    if (body?.message) return String(body.message);
+  } catch {
+    // Non-JSON error body; fall through to the status line.
+  }
+  return `${res.status} ${res.statusText}`;
+}
+
+/**
+ * Fetch JSON from the API, attaching the bearer token when present.
+ *
+ * Components call this as `apiFetch<T>(path, options?)` and read `err.message`
+ * in their catch blocks, so failures throw an Error carrying the server's
+ * `detail` string.
+ */
+export async function apiFetch<T = unknown>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = getAuthToken();
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  // Only set a JSON content type when there is a body to describe.
+  if (options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    // Expired or invalid session -- clear it so the app returns to login
+    // rather than looping on failed authenticated requests.
+    setAuthToken("");
+    throw new Error(await errorMessage(res));
+  }
+
+  if (!res.ok) {
+    throw new Error(await errorMessage(res));
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  return (await res.json()) as T;
+}
+
+/**
+ * Download the signed PDF case report for a hypothesis.
+ *
+ * The endpoint is POST /api/v1/exports/report with `hypothesis_id` as a query
+ * parameter, and it returns PDF bytes rather than JSON -- so this cannot go
+ * through apiFetch.
+ */
+export async function downloadReportPdf(hypothesisId: string): Promise<void> {
+  const token = getAuthToken();
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/exports/report?hypothesis_id=${encodeURIComponent(
+      hypothesisId
+    )}`,
+    {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(await errorMessage(res));
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `netrax_report_${hypothesisId}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoking immediately can cancel the download in some browsers.
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+}

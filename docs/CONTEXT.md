@@ -52,3 +52,19 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `docs/ROLE_SAHIL.md`
   - `docs/ARCHITECTURE.md`
   - `docs/MERGE_STRATEGY.md`
+
+### [2026-08-29] Audit Chain Hardening & Family Cap Enforcement in API Responses
+- **Author**: Vivek (`feature/backend-ledger`)
+- **Rationale**:
+  - **The audit chain's tamper-evidence was nominal, not real.** `verify_audit_chain()` only checked that `prev_hash` values linked up; it never recomputed a hash from a stored row. Because `payload_hash` was written once and never re-derived, editing `action`, `actor_user_id`, `resource_id` or `created_at` on any row was undetectable. The `payload` itself was discarded after hashing, so an auditor could not see what an action actually did, and `payload_hash` could not be re-derived at all. Ordering also relied on `created_at`, so clock skew could reorder the chain and fail verification on untampered data.
+  - Each entry now carries `seq` (monotonic, UNIQUE — concurrent writers collide instead of forking the chain), `payload` (retained, canonical JSON), and `entry_hash` (digest over the row's own fields plus `prev_hash`). `verify_audit_chain()` recomputes both hashes and checks sequence contiguity. Return signature `(valid, count, error)` is unchanged, so all existing callers and tests are unaffected.
+  - Documented limitation, asserted in a test rather than hidden: this is tamper-*evidence*, not tamper-*proofing*. Truncating entries from the tail leaves a shorter but internally consistent chain. `chain_head()` returns the value to publish to an external anchor, which is the only way to detect that.
+  - **`family_breakdown` was returned uncapped.** `compute_attribution()` caps each family at `min(sum, cap)` before summing into `raw_log_lr`, but the API rebuilt the breakdown from stored per-item contributions without re-applying the cap. The response contradicted itself — families summing to 24.76 against a `raw_log_lr` of 9.00 — and the Attribution Lab drew Infrastructure at 5.14/5.0 and Stylometry at 3.62/3.0, bars overflowing their own limits. Family caps are what stop a weak signal class dominating an attribution, so displaying them as violated undermined the model's central claim.
+  - A second defect blocked the naive fix: `FAMILY_CAPS` is keyed `EXACT_IDENTITY` while the ledger stores the display label `Exact Identity`. A direct lookup missed on every family and would have silently applied no cap. `_cap_key()` normalises the label (`Content/NLP` → `CONTENT_NLP`).
+- **Files Touched**:
+  - `apps/api/database/models.py` — `AuditLog`: added `seq`, `payload`, `entry_hash`
+  - `packages/evidence/audit.py` — full-entry hashing, payload retention, recomputing verification, `chain_head()`, bounded-retry append
+  - `apps/api/main.py` — `capped_family_scores()`, `_cap_key()`, applied at both `family_breakdown` sites
+  - `tests/test_audit_chain_integrity.py` — new; 13 tests, 7 of which mutate stored rows and assert detection
+- **Verification**: 26/26 tests pass (13 pre-existing + 13 new). `netrax.db` reseeded — the added columns cannot be applied to an existing table by `create_all()`.
+- **Note for team**: `netrax.db` is committed and changes on every login as the audit chain appends, so it produces spurious diffs and merge conflicts. Recommend untracking it and relying on `python -m seed.generator`, which is deterministic.

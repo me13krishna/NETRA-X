@@ -1,224 +1,249 @@
 """
-NETRA-X Bayesian Fusion & Contradiction Subsystem
-Implements Log-Likelihood Ratio (LLR) multi-evidence fusion, dependence discounting (lambda=0.25),
-family contribution caps, uncapped contradiction subtractions, and decision policy.
+fusion.py — Dependence-aware Log-Likelihood Ratio (LLR) Bayesian Evidence Fusion Engine.
+
+Implements:
+1. Item-level LLR calculation: LLR_i = reliability * credibility * ln(m_i / u_i)
+2. Dependence discounting (lambda = 0.25) across co-dependent evidence items in the same dependence_group.
+3. Family-level Score Capping (EXACT_IDENTITY, FINANCIAL, INFRASTRUCTURE, etc.).
+4. Uncapped Contradiction Penalties subtraction (W_c).
+5. Per-item contribution tracking for Evidence Waterfall visualization.
 """
 
 import math
-from typing import Dict, List, Optional
-from enum import Enum
+import os
+from typing import List, Dict, Tuple, Any, Optional
+import yaml
 
-FAMILY_CAPS: Dict[str, float] = {
-    "EXACT_IDENTITY": 10.0,
-    "FINANCIAL": 7.5,
-    "INFRASTRUCTURE": 5.0,
-    "CONTENT_NLP": 5.0,
-    "STYLOMETRY": 3.0,
-    "TEMPORAL": 2.0,
-    "SEMANTIC_HANDLE": 2.0,
-}
-
-CONTRADICTION_PENALTIES: Dict[str, float] = {
-    "PGP Key Identity Conflict": 12.0,
-    "Temporal Impossibility": 15.0,
-    "Infrastructure Ownership Conflict": 8.0,
-    "Mutually Exclusive Identity": 10.0,
-    "Wallet Contradiction": 8.0,
-}
-
-DEFAULT_LAMBDA = 0.25
+from packages.common.types import (
+    EvidenceItem,
+    EvidenceFamily,
+    FAMILY_CAPS,
+    ItemContributionBreakdown,
+)
 
 
-class DecisionOutcome(str, Enum):
-    HIGH_CONFIDENCE_LINK = "HIGH_CONFIDENCE_LINK"
-    MEDIUM_CONFIDENCE_LINK = "MEDIUM_CONFIDENCE_LINK"
-    LOW_CONFIDENCE_LINK = "LOW_CONFIDENCE_LINK"
-    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
-    CONTRADICTION_REJECTED = "CONTRADICTION_REJECTED"
-
-
-class RawEvidenceInput:
-    def __init__(
-        self,
-        evidence_id: str,
-        family: str,
-        value: str,
-        m_prob: float,  # P(E | H1)
-        u_prob: float,  # P(E | H0)
-        dependence_group: str,
-        source_uri: str,
-        extraction_method: str,
-        timestamp: str,
-        sha256: str,
-        is_contradiction: bool = False,
-        contradiction_type: str = "",
-        abstain: bool = False
-    ):
-        self.evidence_id = evidence_id
-        self.family = family
-        self.value = value
-        self.m_prob = m_prob
-        self.u_prob = u_prob
-        self.dependence_group = dependence_group
-        self.source_uri = source_uri
-        self.extraction_method = extraction_method
-        self.timestamp = timestamp
-        self.sha256 = sha256
-        self.is_contradiction = is_contradiction
-        self.contradiction_type = contradiction_type
-        self.abstain = abstain
-
-        # Calculate item LLR: llr = ln(m / u)
-        if abstain:
-            self.raw_llr = 0.0
-        else:
-            safe_u = max(u_prob, 1e-6)
-            safe_m = max(m_prob, 1e-6)
-            self.raw_llr = math.log(safe_m / safe_u)
-
-
-class AttributionResult:
-    def __init__(
-        self,
-        raw_log_lr: float,
-        calibrated_prob: float,
-        confidence_tier: str,
-        family_scores: Dict[str, float],
-        supporting_items: List[Dict],
-        contradiction_items: List[Dict],
-        total_contradiction_penalty: float,
-        decision: DecisionOutcome,
-        family_count: int
-    ):
-        self.raw_log_lr = raw_log_lr
-        self.calibrated_prob = calibrated_prob
-        self.confidence_tier = confidence_tier
-        self.family_scores = family_scores
-        self.supporting_items = supporting_items
-        self.contradiction_items = contradiction_items
-        self.total_contradiction_penalty = total_contradiction_penalty
-        self.decision = decision
-        self.family_count = family_count
-
-
-def compute_attribution(
-    evidence_items: List[RawEvidenceInput],
-    discount_lambda: float = DEFAULT_LAMBDA,
-    custom_family_caps: Optional[Dict[str, float]] = None
-) -> AttributionResult:
+def load_mu_table(path: Optional[str] = None) -> Dict[str, Any]:
     """
-    Core Log-Likelihood Ratio (LLR) Attribution Algorithm.
-    Applies dependence discounting, family caps, and uncapped contradiction penalties.
+    Load base frequency priors (u_i) and match probabilities (m_i) from YAML.
     """
-    caps = custom_family_caps or FAMILY_CAPS
-
-    # Filter active supporting and contradiction items (ignore abstained evidence)
-    supporting_inputs = [item for item in evidence_items if not item.is_contradiction and not item.abstain]
-    contradiction_inputs = [item for item in evidence_items if item.is_contradiction and not item.abstain]
-
-    # Group supporting evidence by family -> dependence_group
-    family_groups: Dict[str, Dict[str, List[RawEvidenceInput]]] = {}
-    for item in supporting_inputs:
-        fam = item.family
-        dep = item.dependence_group
-        if fam not in family_groups:
-            family_groups[fam] = {}
-        if dep not in family_groups[fam]:
-            family_groups[fam][dep] = []
-        family_groups[fam][dep].append(item)
-
-    family_final_scores: Dict[str, float] = {}
-    supporting_output_items: List[Dict] = []
-
-    for fam, dep_dict in family_groups.items():
-        fam_uncapped_score = 0.0
-        for dep_group, items in dep_dict.items():
-            if not items:
-                continue
-            items_sorted = sorted(items, key=lambda x: x.raw_llr, reverse=True)
-            max_item = items_sorted[0]
-            remaining_items = items_sorted[1:]
-
-            # Group Score: max(LLR) + lambda * sum(remaining LLRs)
-            group_score = max_item.raw_llr + discount_lambda * sum(x.raw_llr for x in remaining_items)
-            fam_uncapped_score += group_score
-
-            for idx, item in enumerate(items_sorted):
-                contrib = item.raw_llr if idx == 0 else item.raw_llr * discount_lambda
-                supporting_output_items.append({
-                    "evidence_id": item.evidence_id,
-                    "family": item.family,
-                    "source_uri": item.source_uri,
-                    "extraction_method": item.extraction_method,
-                    "value": item.value,
-                    "reliability": round(item.m_prob, 2),
-                    "raw_llr": round(item.raw_llr, 3),
-                    "contribution": round(contrib, 3),
-                    "is_contradiction": False,
-                    "dependence_group": item.dependence_group,
-                    "timestamp": item.timestamp,
-                    "sha256": item.sha256
-                })
-
-        cap = caps.get(fam, 5.0)
-        family_final_scores[fam] = round(min(fam_uncapped_score, cap), 3)
-
-    llr_pos = sum(family_final_scores.values())
-
-    # Contradiction Penalties (Uncapped)
-    contradiction_output_items: List[Dict] = []
-    total_penalty = 0.0
-
-    for item in contradiction_inputs:
-        penalty = CONTRADICTION_PENALTIES.get(item.contradiction_type, 10.0)
-        total_penalty += penalty
-        contradiction_output_items.append({
-            "evidence_id": item.evidence_id,
-            "family": item.family,
-            "source_uri": item.source_uri,
-            "extraction_method": item.extraction_method,
-            "value": f"CONTRADICTION: {item.contradiction_type} - {item.value}",
-            "reliability": 0.0,
-            "raw_llr": -penalty,
-            "contribution": -penalty,
-            "is_contradiction": True,
-            "dependence_group": item.dependence_group,
-            "timestamp": item.timestamp,
-            "sha256": item.sha256
-        })
-
-    raw_log_lr = round(llr_pos - total_penalty, 3)
-
-    from .calibration import calibrate_probability, determine_confidence_tier
-    calibrated_prob = calibrate_probability(raw_log_lr)
-    confidence_tier = determine_confidence_tier(calibrated_prob)
-    num_families = len(family_final_scores)
-
-    decision = decide(calibrated_prob, total_penalty, num_families)
-
-    return AttributionResult(
-        raw_log_lr=raw_log_lr,
-        calibrated_prob=calibrated_prob,
-        confidence_tier=confidence_tier,
-        family_scores=family_final_scores,
-        supporting_items=supporting_output_items,
-        contradiction_items=contradiction_output_items,
-        total_contradiction_penalty=total_penalty,
-        decision=decision,
-        family_count=num_families
-    )
-
-
-def decide(calibrated_prob: float, total_contradiction_penalty: float, family_count: int) -> DecisionOutcome:
-    """Automated decision policy based on probability, family independence, and contradictions."""
-    if total_contradiction_penalty >= 15.0:
-        return DecisionOutcome.CONTRADICTION_REJECTED
+    if path is None:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(current_dir, "mu_table.yaml")
     
-    if calibrated_prob >= 0.85 and family_count >= 2:
-        return DecisionOutcome.HIGH_CONFIDENCE_LINK
-    elif calibrated_prob >= 0.60:
-        return DecisionOutcome.MEDIUM_CONFIDENCE_LINK
-    elif calibrated_prob >= 0.35:
-        return DecisionOutcome.LOW_CONFIDENCE_LINK
-    else:
-        return DecisionOutcome.INSUFFICIENT_EVIDENCE
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    return {"features": {}, "contradictions": {}}
+
+
+class LLRFusionEngine:
+    """
+    Core Evidence Fusion Engine implementing dependence-aware LLR fusion.
+    """
+
+    def __init__(self, lambda_discount: float = 0.25, family_caps: Optional[Dict[EvidenceFamily, float]] = None):
+        """
+        Initialize fusion engine with dependence discount factor lambda (default 0.25).
+        """
+        self.lambda_discount = lambda_discount
+        self.family_caps = family_caps or FAMILY_CAPS
+        self.mu_table = load_mu_table()
+
+    def create_item_from_prior(
+        self,
+        item_id: str,
+        feature_name: str,
+        dependence_group: Optional[str] = None,
+        source_reliability: float = 1.0,
+        credibility_multiplier: float = 1.0,
+        abstain: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> EvidenceItem:
+        """
+        Helper factory to instantiate an EvidenceItem using default priors from mu_table.yaml.
+        """
+        features_dict = self.mu_table.get("features", {})
+        contradictions_dict = self.mu_table.get("contradictions", {})
+
+        if feature_name in features_dict:
+            f_info = features_dict[feature_name]
+            fam = EvidenceFamily(f_info.get("family", "CONTENT_NLP"))
+            dep_grp = dependence_group or f_info.get("dependence_group", feature_name)
+            return EvidenceItem(
+                id=item_id,
+                feature_name=feature_name,
+                family=fam,
+                dependence_group=dep_grp,
+                m_i=f_info.get("m_i", 0.90),
+                u_i=f_info.get("u_i", 0.01),
+                is_contradiction=False,
+                abstain=abstain,
+                source_reliability=source_reliability,
+                credibility_multiplier=credibility_multiplier,
+                metadata=metadata or {},
+            )
+        elif feature_name in contradictions_dict:
+            c_info = contradictions_dict[feature_name]
+            return EvidenceItem(
+                id=item_id,
+                feature_name=feature_name,
+                family=EvidenceFamily.TEMPORAL,  # Default fallback family
+                dependence_group=dependence_group or "contradiction",
+                is_contradiction=True,
+                contradiction_weight=c_info.get("contradiction_weight", 10.0),
+                abstain=abstain,
+                metadata=metadata or {},
+            )
+        else:
+            # Fallback item creation
+            return EvidenceItem(
+                id=item_id,
+                feature_name=feature_name,
+                family=EvidenceFamily.CONTENT_NLP,
+                dependence_group=dependence_group or feature_name,
+                m_i=0.80,
+                u_i=0.05,
+                abstain=abstain,
+                source_reliability=source_reliability,
+                credibility_multiplier=credibility_multiplier,
+                metadata=metadata or {},
+            )
+
+    def fuse_evidence(
+        self, items: List[EvidenceItem]
+    ) -> Tuple[float, Dict[str, float], float, int, List[Dict[str, Any]], int, List[str]]:
+        """
+        Performs full dependence-aware LLR fusion across all evidence items.
+        
+        Returns:
+            final_llr: float (total capped LLR minus contradiction penalties)
+            family_breakdown: Dict[str, float] (capped scores per family)
+            total_contradiction_penalty: float
+            abstained_count: int
+            contributions: List[Dict[str, Any]] (waterfall contributions)
+            independent_family_count: int
+            families_present: List[str]
+        """
+        abstained_count = sum(1 for it in items if it.abstain)
+        family_breakdown: Dict[str, float] = {fam.value: 0.0 for fam in EvidenceFamily}
+        contributions: List[Dict[str, Any]] = []
+
+        families_present_set = set()
+        for it in items:
+            if not it.abstain and not it.is_contradiction:
+                families_present_set.add(it.family.value)
+
+        # Process non-contradiction items per family
+        for fam in EvidenceFamily:
+            fam_items = [it for it in items if it.family == fam and not it.abstain and not it.is_contradiction]
+            if not fam_items:
+                continue
+
+            # Group items by dependence_group
+            dep_groups: Dict[str, List[EvidenceItem]] = {}
+            for it in fam_items:
+                dep_groups.setdefault(it.dependence_group, []).append(it)
+
+            # Step 1: Calculate discounted contributions per dependence group
+            group_item_contribs: List[Tuple[EvidenceItem, float, bool]] = []
+            uncapped_family_sum = 0.0
+
+            for grp_id, grp_items in dep_groups.items():
+                # Sort group items by effective LLR descending
+                sorted_grp = sorted(grp_items, key=lambda x: x.get_effective_llr(), reverse=True)
+                for idx, grp_item in enumerate(sorted_grp):
+                    eff_llr = grp_item.get_effective_llr()
+                    if idx == 0:
+                        contrib = eff_llr
+                        is_disc = False
+                    else:
+                        contrib = self.lambda_discount * eff_llr
+                        is_disc = True
+                    group_item_contribs.append((grp_item, contrib, is_disc))
+                    uncapped_family_sum += contrib
+
+            # Step 2: Apply family caps
+            cap = self.family_caps.get(fam, 10.0)
+            if uncapped_family_sum > cap and uncapped_family_sum > 0.0:
+                scale = cap / uncapped_family_sum
+                capped_family_score = cap
+                is_capped_flag = True
+            else:
+                scale = 1.0
+                capped_family_score = uncapped_family_sum
+                is_capped_flag = False
+
+            family_breakdown[fam.value] = capped_family_score
+
+            # Step 3: Record item contributions
+            for item_ref, base_contrib, is_disc in group_item_contribs:
+                final_contrib = base_contrib * scale
+                brk = ItemContributionBreakdown(
+                    evidence_id=item_ref.id,
+                    feature_name=item_ref.feature_name,
+                    family=fam.value,
+                    dependence_group=item_ref.dependence_group,
+                    raw_llr=item_ref.get_effective_llr(),
+                    llr_contrib=final_contrib,
+                    is_discounted=is_disc,
+                    is_capped=is_capped_flag,
+                    is_contradiction=False,
+                    abstain=False,
+                    metadata=item_ref.metadata,
+                )
+                contributions.append(brk.to_dict())
+
+        # Process contradiction items
+        total_contradiction_penalty = 0.0
+        for it in items:
+            if it.is_contradiction:
+                if not it.abstain:
+                    total_contradiction_penalty += it.contradiction_weight
+                brk = ItemContributionBreakdown(
+                    evidence_id=it.id,
+                    feature_name=it.feature_name,
+                    family=it.family.value if isinstance(it.family, EvidenceFamily) else str(it.family),
+                    dependence_group=it.dependence_group,
+                    raw_llr=0.0,
+                    llr_contrib=-it.contradiction_weight if not it.abstain else 0.0,
+                    is_discounted=False,
+                    is_capped=False,
+                    is_contradiction=True,
+                    abstain=it.abstain,
+                    metadata=it.metadata,
+                )
+                contributions.append(brk.to_dict())
+
+        # Process abstained non-contradiction items
+        for it in items:
+            if it.abstain and not it.is_contradiction:
+                brk = ItemContributionBreakdown(
+                    evidence_id=it.id,
+                    feature_name=it.feature_name,
+                    family=it.family.value if isinstance(it.family, EvidenceFamily) else str(it.family),
+                    dependence_group=it.dependence_group,
+                    raw_llr=0.0,
+                    llr_contrib=0.0,
+                    is_discounted=False,
+                    is_capped=False,
+                    is_contradiction=False,
+                    abstain=True,
+                    metadata=it.metadata,
+                )
+                contributions.append(brk.to_dict())
+
+        total_capped_llr = sum(family_breakdown.values())
+        final_llr = total_capped_llr - total_contradiction_penalty
+
+        independent_family_count = sum(1 for v in family_breakdown.values() if v > 0.0)
+        families_present = sorted(list(families_present_set))
+
+        return (
+            final_llr,
+            family_breakdown,
+            total_contradiction_penalty,
+            abstained_count,
+            contributions,
+            independent_family_count,
+            families_present,
+        )
