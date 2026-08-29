@@ -5,6 +5,7 @@ evidence ledger querying, attribution hypothesis evaluation, analyst review, and
 """
 
 import json
+import os
 import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -20,7 +21,7 @@ from packages.evidence.auth import (
 )
 from packages.evidence.audit import append_audit_event, verify_audit_chain
 from packages.evidence.attribution import (
-    RawEvidenceInput, compute_attribution, EvidenceFamily
+    RawEvidenceInput, compute_attribution, EvidenceFamily, FAMILY_CAPS
 )
 from packages.evidence.reporting import generate_pdf_report
 from packages.evidence.stix_export import generate_stix_bundle, generate_csv_export
@@ -45,15 +46,57 @@ app = FastAPI(
     version="0.1.0"
 )
 
+# allow_origins=["*"] with allow_credentials=True is rejected by browsers --
+# the CORS spec forbids a wildcard origin on credentialed requests, so the
+# previous config was simultaneously insecure and non-functional. Origins are
+# now an explicit allow-list, overridable for deployment.
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+def _cap_key(family: str) -> str:
+    """Map a stored family label to its FAMILY_CAPS key.
+
+    The ledger stores display labels ("Exact Identity", "Content/NLP") while
+    FAMILY_CAPS is keyed by identifier ("EXACT_IDENTITY", "CONTENT_NLP"). A
+    direct lookup misses on every family and silently applies no cap, so the
+    normalisation is required, not cosmetic.
+    """
+    return family.strip().upper().replace("/", "_").replace(" ", "_")
+
+
+def capped_family_scores(raw_scores: dict) -> dict:
+    """Apply evidence-family caps to per-family sums before returning them.
+
+    compute_attribution() caps each family at min(sum, cap) before summing into
+    raw_log_lr, but the API rebuilt family_breakdown from the stored per-item
+    contributions without re-applying the cap. The response then contradicted
+    itself -- families summing to 24.76 against a raw_log_lr of 9.00 -- and the
+    Attribution Lab drew Infrastructure at 5.14/5.0 and Stylometry at 3.62/3.0,
+    bars overflowing their own limits.
+
+    Family caps are the mechanism that stops a weak signal class dominating an
+    attribution, so rendering them as violated undermines the central claim of
+    the model. A family with no configured cap is returned unchanged rather
+    than dropped.
+    """
+    return {
+        family: round(min(score, FAMILY_CAPS.get(_cap_key(family), score)), 3)
+        for family, score in raw_scores.items()
+    }
 
 
 # DB Dependency
@@ -311,7 +354,7 @@ def list_hypotheses(db: Session = Depends(get_db), user: User = Depends(get_curr
             reviewer_email=h.reviewer.email if h.reviewer else None,
             supporting_evidence=supporting,
             contradictions=contradictions,
-            family_breakdown=family_scores
+            family_breakdown=capped_family_scores(family_scores)
         ))
     return results
 
@@ -375,7 +418,7 @@ def get_hypothesis(id: str, db: Session = Depends(get_db), user: User = Depends(
         reviewer_email=h.reviewer.email if h.reviewer else None,
         supporting_evidence=supporting,
         contradictions=contradictions,
-        family_breakdown=family_scores
+        family_breakdown=capped_family_scores(family_scores)
     )
 
 
