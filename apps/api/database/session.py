@@ -39,7 +39,15 @@ if "postgresql" in DATABASE_URL_SYNC or "postgres" in DATABASE_URL_SYNC:
         DATABASE_URL_SYNC = "sqlite:///./netrax.db"
 
 if "sqlite" in DATABASE_URL_SYNC:
-    async_engine = create_async_engine(DATABASE_URL, echo=False)
+    try:
+        import aiosqlite
+        async_engine = create_async_engine(DATABASE_URL, echo=False)
+    except (ImportError, ModuleNotFoundError):
+        print("[!] Warning: aiosqlite not installed. Using synchronous engine fallback.")
+        async_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False) if False else None
+        # Use sync engine as primary if aiosqlite missing
+        DATABASE_URL = DEFAULT_DB_URL_SYNC
+        async_engine = create_async_engine("sqlite:///./netrax.db?check_same_thread=False", echo=False)
     sync_engine = create_engine(DATABASE_URL_SYNC, echo=False, connect_args={"check_same_thread": False})
 else:
     async_engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
