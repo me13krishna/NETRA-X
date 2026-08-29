@@ -106,7 +106,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
             <span>Bayesian Attribution Intelligence Lab</span>
           </h1>
           <p className="text-xs text-netra-muted mt-0.5">
-            Log-Likelihood Ratio Fusion, Dependence Discounting ($\lambda=0.25$) & Isotonic Calibration
+            Log-Likelihood Ratio Fusion, Dependence Discounting (lambda = 0.25) & Isotonic Calibration
           </p>
         </div>
 
@@ -181,7 +181,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
 
           <div className="w-full h-3.5 bg-netra-bg rounded-full overflow-hidden border border-netra-border flex">
             <div
-              className="h-full bg-gradient-to-r from-netra-cyan via-netra-purple to-netra-valid transition-all duration-500 rounded-full"
+              className="h-full bg-netra-cyan transition-all duration-500 rounded-full"
               style={{ width: `${hypothesis.calibrated_prob * 100}%` }}
             />
           </div>
@@ -195,7 +195,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
           <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-white border-b border-netra-border pb-2 flex items-center justify-between">
               <span>Authoritative Evidence Waterfall</span>
-              <span className="text-xs text-netra-subtle font-mono">DISCOUNT FACTOR $\lambda=0.25$</span>
+              <span className="text-xs text-netra-subtle font-mono">DISCOUNT FACTOR  lambda = 0.25</span>
             </h2>
 
             <EvidenceWaterfall
@@ -239,7 +239,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
               <button
                 onClick={() => handleDecision("ACCEPT")}
                 disabled={submitting}
-                className="w-full py-2.5 rounded-lg bg-netra-valid text-white hover:bg-netra-valid/80 font-bold text-xs flex items-center justify-center space-x-2 shadow transition disabled:opacity-50"
+                className="w-full py-2.5 rounded-lg bg-transparent border border-netra-valid text-netra-valid hover:bg-netra-valid hover:text-netra-bg font-bold text-xs flex items-center justify-center space-x-2 shadow transition disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>ACCEPT LINKAGE</span>
@@ -248,7 +248,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
               <button
                 onClick={() => handleDecision("REJECT")}
                 disabled={submitting}
-                className="w-full py-2.5 rounded-lg bg-netra-red text-white hover:bg-netra-red/80 font-bold text-xs flex items-center justify-center space-x-2 shadow transition disabled:opacity-50"
+                className="w-full py-2.5 rounded-lg bg-transparent border border-netra-red text-netra-red hover:bg-netra-red hover:text-netra-text font-bold text-xs flex items-center justify-center space-x-2 shadow transition disabled:opacity-50"
               >
                 <XCircle className="w-4 h-4" />
                 <span>REJECT LINKAGE</span>

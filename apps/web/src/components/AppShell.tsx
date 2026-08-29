@@ -38,7 +38,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       {/* Top Bar */}
       <header className="h-14 border-b border-netra-border bg-netra-surface px-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-netra-purple to-netra-cyan flex items-center justify-center font-bold text-white shadow-lg">
+          <div className="w-8 h-8 rounded-lg bg-netra-purple flex items-center justify-center font-bold text-white shadow-lg">
             N
           </div>
           <div>

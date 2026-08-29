@@ -41,7 +41,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       <div className="w-full max-w-md bg-netra-card border border-netra-border rounded-2xl p-8 shadow-2xl glass-panel relative z-10 space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-netra-purple to-netra-cyan flex items-center justify-center font-bold text-xl text-white shadow-xl mx-auto">
+          <div className="w-12 h-12 rounded-xl bg-netra-purple flex items-center justify-center font-bold text-xl text-white shadow-xl mx-auto">
             N
           </div>
           <h1 className="text-2xl font-bold text-white tracking-wider">NETRA-X</h1>
@@ -88,7 +88,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-lg bg-gradient-to-r from-netra-purple to-netra-deepViolet text-white font-bold text-xs flex items-center justify-center space-x-2 shadow-lg transition hover:opacity-90 disabled:opacity-50"
+            className="w-full py-3 rounded-lg bg-netra-purple hover:bg-netra-deepViolet text-white font-bold text-xs flex items-center justify-center space-x-2 shadow-lg transition hover:opacity-90 disabled:opacity-50"
           >
             <span>{loading ? "Authenticating..." : "Authorize Access"}</span>
             <ArrowRight className="w-4 h-4" />

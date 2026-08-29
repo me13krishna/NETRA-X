@@ -51,7 +51,7 @@ export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
                 </div>
                 <div className="w-full bg-netra-bg h-3.5 rounded-full overflow-hidden border border-netra-border flex">
                   <div
-                    className="h-full bg-gradient-to-r from-netra-purple via-indigo-500 to-netra-cyan rounded-full transition-all duration-500"
+                    className="h-full bg-netra-cyan rounded-full transition-all duration-500"
                     style={{ width: `${widthPct}%` }}
                   />
                 </div>
@@ -68,7 +68,7 @@ export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
               </div>
               <div className="w-full bg-netra-bg h-3.5 rounded-full overflow-hidden border border-netra-red/40 flex justify-end">
                 <div
-                  className="h-full bg-gradient-to-l from-red-600 to-rose-500 rounded-full transition-all duration-500"
+                  className="h-full bg-netra-red rounded-full transition-all duration-500"
                   style={{ width: `${Math.min(100, (totalContradictionPenalty / 15.0) * 100)}%` }}
                 />
               </div>
