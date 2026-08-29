@@ -1,32 +1,16 @@
 """
-NETRA-X Attribution Engine Package
-Includes Bayesian LLR evidence fusion, isotonic probability calibration, and candidate generation.
+Attribution package initialization.
 """
-
-from .fusion import (
-    RawEvidenceInput,
-    AttributionResult,
-    compute_attribution,
-    decide,
-    DEFAULT_LAMBDA,
-    FAMILY_CAPS,
-    CONTRADICTION_PENALTIES
-)
-from .calibration import IsotonicCalibrator, calibrate_probability, determine_confidence_tier
-from .candidate_gen import CandidateGenerator
-from packages.schemas.models import EvidenceFamily
+from packages.attribution.fusion import LLRFusionEngine, load_mu_table
+from packages.attribution.calibration import IsotonicCalibrator, sigmoid_llr_to_prob
+from packages.attribution.decide import evaluate_attribution, compute_attribution, parse_evidence_row
 
 __all__ = [
-    "RawEvidenceInput",
-    "AttributionResult",
-    "compute_attribution",
-    "decide",
-    "DEFAULT_LAMBDA",
-    "FAMILY_CAPS",
-    "CONTRADICTION_PENALTIES",
+    "LLRFusionEngine",
+    "load_mu_table",
     "IsotonicCalibrator",
-    "calibrate_probability",
-    "determine_confidence_tier",
-    "CandidateGenerator",
-    "EvidenceFamily"
+    "sigmoid_llr_to_prob",
+    "evaluate_attribution",
+    "compute_attribution",
+    "parse_evidence_row",
 ]

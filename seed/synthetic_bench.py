@@ -7,7 +7,11 @@ Generates deterministic multi-actor benchmark scenario:
 """
 
 from typing import List, Dict, Any, Tuple
-from packages.attribution import RawEvidenceInput, compute_attribution, EvidenceFamily
+# Import through the bridge, not the engine directly. packages/evidence/
+# attribution.py is the single seam between application code and the
+# attribution engine -- importing packages.attribution here bypassed it and
+# broke the moment the engine's public names changed.
+from packages.evidence.attribution import RawEvidenceInput, compute_attribution, EvidenceFamily
 
 
 class SyntheticBenchmarkSuite:
