@@ -118,6 +118,17 @@ def on_startup():
         print(f"[!] Database startup seed check: {e}")
 
 
+@app.get("/")
+def root():
+    return {
+        "platform": "NETRA-X Intelligence API",
+        "status": "healthy",
+        "version": "0.1.0",
+        "documentation": "/docs",
+        "health": "/health"
+    }
+
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "platform": "NETRA-X MVP v0.1", "timestamp": datetime.utcnow().isoformat()}
