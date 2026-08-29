@@ -23,6 +23,7 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -e .
 
 # Environment variables
 ENV PYTHONPATH=/app
+ENV NETRAX_ALLOW_EPHEMERAL_SECRET=1
 ENV PORT=8000
 EXPOSE 8000
 

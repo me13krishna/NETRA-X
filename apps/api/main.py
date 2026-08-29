@@ -107,8 +107,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 def on_startup():
     init_db_sync()
     try:
-        from seed.generator import seed_database
-        seed_database()
+        session = SyncSessionLocal()
+        try:
+            if session.query(User).first() is None:
+                from seed.generator import seed_database
+                seed_database()
+        finally:
+            session.close()
     except Exception as e:
         print(f"[!] Database startup seed check: {e}")
 
