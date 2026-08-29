@@ -181,7 +181,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
 
           <div className="w-full h-3.5 bg-netra-bg rounded-full overflow-hidden border border-netra-border flex">
             <div
-              className="h-full bg-netra-cyan transition-all duration-500 rounded-full"
+              className="h-full bg-netra-cyan bar-fill transition-all duration-500"
               style={{ width: `${hypothesis.calibrated_prob * 100}%` }}
             />
           </div>

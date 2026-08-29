@@ -44,7 +44,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           <div className="w-12 h-12 rounded-xl bg-netra-purple flex items-center justify-center font-bold text-xl text-white shadow-xl mx-auto">
             N
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-wider">NETRA-X</h1>
+          <h1 data-text="NETRA-X" className="glitch text-2xl font-bold text-white tracking-wider">NETRA-X</h1>
           <p className="text-xs text-netra-muted">
             Dark Web Threat Actor Intelligence & Attribution Operating System
           </p>

@@ -142,3 +142,111 @@ button, a[role="button"] {
 button:active, a[role="button"]:active {
   transform: translateY(1px);
 }
+
+/* ==========================================================================
+   MOTION
+   MOTION_INTENSITY: 6 (raised from the 2-3 the dial table gives a
+   regulated/analyst tool, because CRT degradation is part of the aesthetic
+   brief here).
+
+   Every effect below states what it communicates. The skill's rule is that
+   "it looked cool" is not a valid reason, and that perpetual loops on every
+   element read as filler -- so ambient motion is confined to things that are
+   genuinely live (status, contradictions), and everything else moves once, on
+   entry, then stops.
+
+   All of it is disabled by the prefers-reduced-motion block above.
+   ========================================================================== */
+
+/* --- GLITCH ------------------------------------------------------------
+   Communicates: brand identity + the degraded-signal premise of the product.
+   Fires on hover and on a long idle interval, never continuously -- a
+   permanently glitching wordmark is noise, not character. */
+@keyframes glitch-shift-r {
+  0%, 92%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+  93%  { clip-path: inset(12% 0 62% 0); transform: translate(2px, -1px); }
+  95%  { clip-path: inset(48% 0 21% 0); transform: translate(-2px, 1px); }
+  97%  { clip-path: inset(78% 0 4% 0);  transform: translate(1px, 0); }
+}
+@keyframes glitch-shift-l {
+  0%, 92%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+  93%  { clip-path: inset(70% 0 8% 0);  transform: translate(-2px, 1px); }
+  95%  { clip-path: inset(26% 0 55% 0); transform: translate(2px, -1px); }
+  97%  { clip-path: inset(5% 0 80% 0);  transform: translate(-1px, 0); }
+}
+
+.glitch { position: relative; display: inline-block; }
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  pointer-events: none;
+}
+.glitch::before { color: #E61919; animation: glitch-shift-r 6s steps(1) infinite; }
+.glitch::after  { color: #4AF626; animation: glitch-shift-l 6s steps(1) infinite; }
+.glitch:hover::before { animation-duration: 0.7s; }
+.glitch:hover::after  { animation-duration: 0.7s; }
+
+/* --- CRT SWEEP ---------------------------------------------------------
+   Communicates: the display is live and refreshing. One bright line, slow
+   enough to read as ambient hardware rather than a progress indicator. */
+@keyframes crt-sweep { 0% { top: -20%; } 100% { top: 120%; } }
+body::before {
+  content: "";
+  position: fixed;
+  left: 0; right: 0;
+  height: 18vh;
+  pointer-events: none;
+  z-index: 9998;
+  background: linear-gradient(180deg, transparent, rgba(234, 234, 234, 0.028), transparent);
+  animation: crt-sweep 9s linear infinite;
+}
+
+/* --- BOOT ENTRY --------------------------------------------------------
+   Communicates: state transition. The console powering up after auth, and
+   panels arriving in sequence rather than all at once. Runs once on mount. */
+@keyframes boot-in {
+  0%   { opacity: 0; transform: translateY(6px); clip-path: inset(0 0 100% 0); }
+  60%  { opacity: 1; clip-path: inset(0 0 0 0); }
+  100% { opacity: 1; transform: translateY(0); clip-path: inset(0 0 0 0); }
+}
+.boot-in { animation: boot-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.boot-in-1 { animation-delay: 60ms; }
+.boot-in-2 { animation-delay: 130ms; }
+.boot-in-3 { animation-delay: 200ms; }
+
+/* --- BAR FILL ----------------------------------------------------------
+   Communicates: the value being measured, not merely reported. The waterfall
+   is the core read on the Attribution Lab, so it earns an entry animation. */
+@keyframes bar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.bar-fill {
+  transform-origin: left center;
+  animation: bar-fill 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* --- LIVE STATUS -------------------------------------------------------
+   Communicates: this readout is current. Sanctioned perpetual use -- it is a
+   status indicator, which is exactly the case the skill allows a loop for. */
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.live-dot { animation: live-pulse 2.4s ease-in-out infinite; }
+
+/* --- CONTRADICTION ALERT -----------------------------------------------
+   Communicates: hierarchy. A contradiction is the single most important thing
+   an analyst can miss, so it gets the only aggressive motion in the system --
+   and only when one is actually present. */
+@keyframes hazard-flicker {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.62; }
+}
+.contradiction-alert { animation: hazard-flicker 1.6s steps(2) infinite; }
+
+/* --- DATA ARRIVAL ------------------------------------------------------
+   Communicates: feedback that a value loaded, distinguishing fresh telemetry
+   from a stale screen. Fires once. */
+@keyframes data-arrive {
+  0%   { opacity: 0; letter-spacing: 0.3em; }
+  100% { opacity: 1; letter-spacing: normal; }
+}
+.data-arrive { animation: data-arrive 340ms ease-out both; }
