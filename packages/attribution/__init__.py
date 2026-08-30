@@ -10,6 +10,12 @@ from packages.attribution.graph_embedding import (
     fit_graph_embeddings,
     evaluate_graph_link,
 )
+from packages.attribution.financial import (
+    UTXOCoSpendingClusterer,
+    FinancialAttributionEvaluator,
+    build_utxo_clusters,
+    evaluate_wallet_evidence,
+)
 
 __all__ = [
     "LLRFusionEngine",
@@ -23,5 +29,10 @@ __all__ = [
     "LinkPredictor",
     "fit_graph_embeddings",
     "evaluate_graph_link",
+    "UTXOCoSpendingClusterer",
+    "FinancialAttributionEvaluator",
+    "build_utxo_clusters",
+    "evaluate_wallet_evidence",
 ]
+
 

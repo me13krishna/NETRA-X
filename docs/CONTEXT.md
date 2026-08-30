@@ -149,5 +149,21 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `python -m pytest tests/attribution/test_graph_embedding.py -v` → 4/4 passed
   - `python -m pytest tests/ -v` → 53/53 passed cleanly
 
+### [2026-08-30] Krishna — Cryptocurrency UTXO Co-Spending & Financial Clustering (`packages/attribution/financial.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Built `UTXOCoSpendingClusterer` implementing the Bitcoin Common Input Ownership Heuristic via Disjoint Set Union (Union-Find) to merge multi-input transaction addresses into unified cluster IDs (`wallet_cluster_btc`).
+  - Added Monero (XMR) stealth address validation, subaddress detection, and RingCT privacy level scoring.
+  - Implemented `FinancialAttributionEvaluator.evaluate_wallet_evidence()` emitting calibrated `EvidenceItem` objects for direct address reuse (`btc_address_reuse`) and UTXO co-spending cluster matches (`btc_co_input_clustering`).
+- **Files Touched**:
+  - `packages/attribution/financial.py` [NEW] — `UnionFind`, `UTXOCoSpendingClusterer`, `FinancialAttributionEvaluator`, `build_utxo_clusters()`, `evaluate_wallet_evidence()`
+  - `packages/attribution/__init__.py` — re-exported financial clustering symbols
+  - `tests/attribution/test_financial.py` [NEW] — 3 unit tests covering UTXO cluster merging, Monero stealth validation, and financial evidence emission
+- **Verification**:
+  - `python -m pytest tests/attribution/test_financial.py -v` → 3/3 passed
+  - `python -m pytest tests/ -v` → 56/56 passed cleanly
+
+
 
 
