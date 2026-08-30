@@ -12,6 +12,8 @@ import { EvidenceVault } from "../components/EvidenceVault";
 import { AuditLogViewer } from "../components/AuditLogViewer";
 import { CasesView } from "../components/CasesView";
 import { CopilotDrawer } from "../components/CopilotDrawer";
+import { CommandPalette } from "../components/CommandPalette";
+import { ToastProvider } from "../components/StatusToasts";
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -65,13 +67,22 @@ export default function Home() {
   }
 
   return (
-    <AppShell
-      currentView={currentView}
-      onNavigate={handleNavigate}
-      userEmail={user.email}
-      onLogout={handleLogout}
-      onOpenCopilot={() => setIsCopilotOpen(true)}
-    >
+    <ToastProvider>
+      <CommandPalette
+        onNavigate={handleNavigate}
+        onOpenCopilot={() => setIsCopilotOpen(true)}
+        onLogout={handleLogout}
+      />
+      <AppShell
+        currentView={currentView}
+        onNavigate={handleNavigate}
+        userEmail={user.email}
+        onLogout={handleLogout}
+        onOpenCopilot={() => setIsCopilotOpen(true)}
+      >
+      {/* Keyed on the view id so the enter animation replays on every module
+          change; without the key React reuses the node and nothing animates. */}
+      <div key={currentView} className="view-enter">
       {currentView === "command_center" && <CommandCenter onNavigate={handleNavigate} />}
       {currentView === "cases" && <CasesView />}
       {currentView === "actors" && (
@@ -91,7 +102,10 @@ export default function Home() {
       {currentView === "evidence_vault" && <EvidenceVault />}
       {currentView === "audit_log" && <AuditLogViewer />}
 
-      <CopilotDrawer isOpen={isCopilotOpen} onClose={() => setIsCopilotOpen(false)} />
-    </AppShell>
+      </div>
+
+        <CopilotDrawer isOpen={isCopilotOpen} onClose={() => setIsCopilotOpen(false)} />
+      </AppShell>
+    </ToastProvider>
   );
 }

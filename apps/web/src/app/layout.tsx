@@ -42,6 +42,15 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "NETRA-X | Dark Web Threat Actor Intelligence Platform",
   description: "Evidence-Driven Dark Web Threat Actor Intelligence & Attribution Platform",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/netra-x-logo.png",
+  },
+  openGraph: {
+    title: "NETRA-X",
+    description: "Evidence-Driven Dark Web Threat Actor Intelligence & Attribution Platform",
+    images: ["/netra-x-logo.png"],
+  },
 };
 
 export default function RootLayout({

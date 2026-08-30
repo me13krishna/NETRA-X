@@ -116,7 +116,7 @@ export const CopilotDrawer: React.FC<CopilotDrawerProps> = ({ isOpen, onClose })
           <button
             onClick={handleSend}
             disabled={loading}
-            className="p-1.5 rounded bg-netra-purple text-white hover:bg-netra-purple/80 transition disabled:opacity-50"
+            className="p-1.5 rounded bg-netra-purple text-netra-bg hover:bg-netra-purple/80 transition disabled:opacity-50"
           >
             <Send className="w-3.5 h-3.5" />
           </button>

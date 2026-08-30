@@ -35,6 +35,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Neural stylometry only. Deliberately NOT a runtime dependency: torch is a
+# ~2GB install and the deployment target is a 512MB Render instance, where a
+# hard requirement would break the build outright.
+neural = [
+    "torch>=2.2.0",
+]
 dev = [
     "pytest>=8.1.1",
     "pytest-asyncio>=0.23.5",

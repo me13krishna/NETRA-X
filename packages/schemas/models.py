@@ -236,3 +236,49 @@ class SearchResponse(BaseModel):
     query: str
     total_matches: int
     results: List[SearchResultItem]
+
+
+# Ingestion
+#
+# `lawful_basis` is a closed enum rather than a free string on purpose. The
+# column is NOT NULL in the ledger because collection legality is a property of
+# every observation, not an annotation someone may forget -- so the API refuses
+# to record an observation that cannot state its basis.
+class LawfulBasis(str, Enum):
+    PASSIVE_OSINT = "passive_osint"
+    SYNTHETIC_SEED = "synthetic_seed"
+    HONEYPOT = "honeypot"
+
+
+class SourceType(str, Enum):
+    PASSIVE_ONION = "PASSIVE_ONION"
+    FORUM_CRAWL = "FORUM_CRAWL"
+    HONEYPOT = "HONEYPOT"
+    SYNTHETIC = "SYNTHETIC"
+
+
+class IngestRequest(BaseModel):
+    raw_content: str = Field(..., min_length=1, max_length=200_000)
+    source_name: str = Field(..., min_length=1, max_length=255)
+    source_type: SourceType = SourceType.FORUM_CRAWL
+    lawful_basis: LawfulBasis = LawfulBasis.PASSIVE_OSINT
+    source_uri: Optional[str] = Field(default=None, max_length=512)
+
+
+class ExtractedEvidence(BaseModel):
+    id: str
+    kind: str
+    value: str
+    dependence_group: str
+    confidence: float
+
+
+class IngestResponse(BaseModel):
+    observation_id: str
+    artifact_sha256: str
+    source_id: str
+    lawful_basis: str
+    duplicate: bool
+    extracted_count: int
+    xmr_abstain: bool
+    evidence: List[ExtractedEvidence]

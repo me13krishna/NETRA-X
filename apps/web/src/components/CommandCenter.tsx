@@ -6,7 +6,19 @@ import {
   ArrowUpRight, Clock, AlertTriangle, CheckCircle, Database
 } from "lucide-react";
 import { apiFetch } from "../lib/api";
+import { useCountUp } from "../lib/useCountUp";
+import { useToast } from "./StatusToasts";
 import { ReviewQueue } from "./ReviewQueue";
+
+/** One KPI figure. Split out so each tile owns its own count-up. */
+function StatValue({ value, loading }: { value: number; loading: boolean }) {
+  const shown = useCountUp(loading ? null : value);
+  return (
+    <div className="text-3xl font-bold text-white font-mono data-arrive tabular-nums">
+      {loading ? "..." : shown}
+    </div>
+  );
+}
 
 interface CommandCenterProps {
   onNavigate: (view: string, targetId?: string) => void;
@@ -39,6 +51,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
     loadData();
   }, []);
 
+  const toast = useToast();
+
   const handleReviewDecision = async (id: string, decision: string) => {
     try {
       await apiFetch(`/api/v1/review/${id}`, {
@@ -46,8 +60,17 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
         body: JSON.stringify({ decision, notes: `Reviewed from Command Center Queue (${decision})` })
       });
       await loadData();
+      // The write also appends a hash-chained audit event, so the toast names
+      // that: the analyst should see that the decision was recorded, not just
+      // that a button responded.
+      toast.push(
+        decision === "REJECT" ? "warn" : "ok",
+        `Hypothesis ${decision.toLowerCase()}ed`,
+        `Decision written to ledger and audit chain · ${id.slice(0, 8)}`
+      );
     } catch (err: any) {
-      alert(`Decision failed: ${err.message}`);
+      // Was a browser alert(): modal, unstyled, and it blocks the thread.
+      toast.push("error", "Decision failed", err.message);
     }
   };
 
@@ -83,7 +106,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
             <span>Tracked Threat Actors</span>
             <Users className="w-4 h-4 text-netra-purple" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono data-arrive">{loading ? "..." : actorsCount}</div>
+          <StatValue value={actorsCount} loading={loading} />
           <div className="text-[11px] text-netra-cyan">3 Aliases • 1 PGP Key • 2 BTC Wallets</div>
         </div>
 
@@ -92,7 +115,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
             <span>Evidence Artifacts</span>
             <FileText className="w-4 h-4 text-netra-cyan" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono data-arrive">{loading ? "..." : evidenceCount}</div>
+          <StatValue value={evidenceCount} loading={loading} />
           <div className="text-[11px] text-netra-valid">100% SHA-256 Hash Verified</div>
         </div>
 
@@ -101,7 +124,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
             <span>Attribution Hypotheses</span>
             <GitMerge className="w-4 h-4 text-netra-amber" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono data-arrive">{loading ? "..." : hypotheses.length}</div>
+          <StatValue value={hypotheses.length} loading={loading} />
           <div className="text-[11px] text-netra-amber">{openHypotheses.length} Awaiting Analyst Review</div>
         </div>
 
@@ -110,7 +133,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
             <span>Active Cases</span>
             <ShieldAlert className="w-4 h-4 text-netra-valid" />
           </div>
-          <div className="text-3xl font-bold text-white font-mono data-arrive">1</div>
+          <StatValue value={1} loading={loading} />
           <div className="text-[11px] text-netra-muted">Operation ShadowByte</div>
         </div>
       </div>

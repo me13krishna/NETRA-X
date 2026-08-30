@@ -5,6 +5,7 @@ import {
   GitMerge, ShieldCheck, AlertOctagon, CheckCircle2, XCircle, HelpCircle,
   Download, Lock, FileText, ArrowRight, FileSpreadsheet, Shield
 } from "lucide-react";
+import { useToast } from "./StatusToasts";
 import { apiFetch, downloadReportPdf } from "../lib/api";
 import { EvidenceWaterfall } from "./EvidenceWaterfall";
 
@@ -17,6 +18,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
   hypothesisId,
   onNavigate
 }) => {
+  const toast = useToast();
   const [hypothesis, setHypothesis] = useState<any>(null);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -62,7 +64,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
     try {
       await downloadReportPdf(hypothesis.id);
     } catch (err: any) {
-      alert(`Export failed: ${err.message}`);
+      toast.push("error", "Export failed", err.message);
     } finally {
       setExporting(false);
     }
@@ -86,14 +88,14 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
   return (
     <div className="space-y-6">
       {/* Assessment Type Mandatory Warning Banner */}
-      <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3.5 flex items-center justify-between font-mono text-xs text-amber-300">
+      <div className="bg-netra-amber/10 border border-netra-amber/40 rounded-xl p-3.5 flex items-center justify-between font-mono text-xs text-netra-amber">
         <div className="flex items-center space-x-2">
-          <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+          <Shield className="w-4 h-4 text-netra-amber shrink-0" />
           <span className="font-bold">ASSESSMENT TYPE: INVESTIGATIVE LEAD</span>
           <span className="text-netra-subtle">•</span>
           <span>Analyst review required before legal submission</span>
         </div>
-        <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[11px] font-bold border border-amber-500/30">
+        <span className="bg-netra-amber/20 text-netra-amber px-2 py-0.5 rounded text-[11px] font-bold border border-netra-amber/30">
           PROVENANCE PROTECTED
         </span>
       </div>
@@ -121,7 +123,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
           </button>
           <button
             onClick={handleCsvExport}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-mono text-xs border border-emerald-500/40 transition"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-netra-valid/15 text-netra-valid hover:bg-netra-valid/25 font-mono text-xs border border-netra-valid/40 transition"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>CSV Ledger</span>
@@ -129,7 +131,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
           <button
             onClick={handlePdfExport}
             disabled={exporting}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-netra-purple text-white hover:bg-netra-purple/80 font-medium text-xs shadow-lg transition disabled:opacity-50"
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-netra-purple text-netra-bg hover:bg-netra-purple/80 font-medium text-xs shadow-lg transition disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
             <span>{exporting ? "Generating..." : "Export Signed PDF"}</span>

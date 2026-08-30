@@ -266,7 +266,7 @@ export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
             <div className="pt-3 border-t border-netra-border flex justify-end">
               <button
                 onClick={() => setSelectedModalItem(null)}
-                className="px-4 py-2 bg-netra-purple text-white font-bold rounded-lg text-xs hover:bg-netra-purple/80 transition"
+                className="px-4 py-2 bg-netra-purple text-netra-bg font-bold rounded-lg text-xs hover:bg-netra-purple/80 transition"
               >
                 Close Provenance Inspector
               </button>

@@ -2,9 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { FileSearch, Plus, ShieldCheck, Users, Calendar } from "lucide-react";
+import { useToast } from "./StatusToasts";
 import { apiFetch } from "../lib/api";
 
 export const CasesView: React.FC = () => {
+  const toast = useToast();
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -37,7 +39,7 @@ export const CasesView: React.FC = () => {
       setTitle("");
       setDescription("");
     } catch (err: any) {
-      alert(`Error creating case: ${err.message}`);
+      toast.push("error", "Could not create investigation", err.message);
     }
   };
 
@@ -56,7 +58,7 @@ export const CasesView: React.FC = () => {
 
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-netra-purple text-white hover:bg-netra-purple/80 font-medium text-xs shadow-lg transition"
+          className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-netra-purple text-netra-bg hover:bg-netra-purple/80 font-medium text-xs shadow-lg transition"
         >
           <Plus className="w-4 h-4" />
           <span>New Investigation Case</span>
@@ -137,7 +139,7 @@ export const CasesView: React.FC = () => {
               </button>
               <button
                 onClick={handleCreateCase}
-                className="px-4 py-2 rounded bg-netra-purple text-white hover:bg-netra-purple/80 text-xs font-medium"
+                className="px-4 py-2 rounded bg-netra-purple text-netra-bg hover:bg-netra-purple/80 text-xs font-medium"
               >
                 Create Case
               </button>

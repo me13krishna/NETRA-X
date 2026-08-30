@@ -6,6 +6,12 @@ import math
 import numpy as np
 import pytest
 
+# torch is an optional extra ([neural]) -- a ~2GB install that the deployment
+# target cannot carry. Without this guard the module-level import below raises
+# during collection, which aborts the ENTIRE suite rather than skipping these
+# tests: on a machine without torch the whole project looked broken.
+pytest.importorskip("torch", reason="requires the [neural] extra: pip install -e .[neural]")
+
 from packages.stylometry.neural import (
     NeuralStylometryEncoder,
     extract_neural_style_embedding,

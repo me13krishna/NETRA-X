@@ -113,7 +113,26 @@ def verify_short_text_neural_stylometry(
     Extracts 128d PyTorch subword embeddings for short-text episodes (<50 words)
     and computes cosine similarity to produce a calibrated EvidenceItem.
     """
-    from packages.stylometry.neural import extract_neural_style_embedding
+    # torch is an optional extra ([neural]); the deployment target cannot carry
+    # a ~2GB dependency. When it is absent the verifier abstains rather than
+    # raising -- which is the semantically correct answer anyway: a model that
+    # cannot run has no opinion, and abstention is already a first-class
+    # outcome here. The reason is recorded so an abstained run is never
+    # mistaken for a confident one.
+    try:
+        from packages.stylometry.neural import extract_neural_style_embedding
+    except ImportError:
+        return EvidenceItem(
+            id=item_id,
+            feature_name="stylometry_neural_embedding",
+            family=EvidenceFamily.STYLOMETRY,
+            dependence_group="author_stylometry_neural",
+            m_i=0.80,
+            u_i=0.05,
+            llr=0.0,
+            abstain=True,
+            metadata={"reason": "PyTorch not installed; install with pip install -e .[neural]"},
+        )
 
     text1 = " ".join(ep1.texts) if ep1.texts else ""
     text2 = " ".join(ep2.texts) if ep2.texts else ""
