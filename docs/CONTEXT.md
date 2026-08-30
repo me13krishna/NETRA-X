@@ -134,4 +134,51 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `python -m bench.report` → ECE = 0.0320 (<0.15), FAR = 0.00%, Recall@10 = 100.00%, ROC-AUC = 1.0000, Brier = 0.0049 (All Passed)
   - `python -m pytest tests/ -v` → 49/49 passed cleanly
 
+### [2026-08-30] Krishna — Identity Graph Embedding & Link Prediction (`packages/attribution/graph_embedding.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Built PyTorch Skip-Gram neural network (`GraphSkipGramModel`) and Node2Vec biased random-walk embedder (`Node2VecGraphEmbedder`).
+  - Projects identity graph nodes (Actors, Aliases, Wallets, Favicons, PGP Keys) into 64-dimensional latent embedding vectors.
+  - Implemented `LinkPredictor` computing cosine similarity, Euclidean distance, and emitting calibrated `EvidenceItem` outputs for Bayesian Evidence Fusion.
+- **Files Touched**:
+  - `packages/attribution/graph_embedding.py` [NEW] — `GraphSkipGramModel`, `Node2VecGraphEmbedder`, `LinkPredictor`, `fit_graph_embeddings()`, `evaluate_graph_link()`
+  - `packages/attribution/__init__.py` — re-exported graph embedding symbols
+  - `tests/attribution/test_graph_embedding.py` [NEW] — 4 unit tests covering walk sampling, embedding training, link prediction, and evidence item emission
+- **Verification**:
+  - `python -m pytest tests/attribution/test_graph_embedding.py -v` → 4/4 passed
+  - `python -m pytest tests/ -v` → 53/53 passed cleanly
+
+### [2026-08-30] Krishna — Cryptocurrency UTXO Co-Spending & Financial Clustering (`packages/attribution/financial.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Built `UTXOCoSpendingClusterer` implementing the Bitcoin Common Input Ownership Heuristic via Disjoint Set Union (Union-Find) to merge multi-input transaction addresses into unified cluster IDs (`wallet_cluster_btc`).
+  - Added Monero (XMR) stealth address validation, subaddress detection, and RingCT privacy level scoring.
+  - Implemented `FinancialAttributionEvaluator.evaluate_wallet_evidence()` emitting calibrated `EvidenceItem` objects for direct address reuse (`btc_address_reuse`) and UTXO co-spending cluster matches (`btc_co_input_clustering`).
+- **Files Touched**:
+  - `packages/attribution/financial.py` [NEW] — `UnionFind`, `UTXOCoSpendingClusterer`, `FinancialAttributionEvaluator`, `build_utxo_clusters()`, `evaluate_wallet_evidence()`
+  - `packages/attribution/__init__.py` — re-exported financial clustering symbols
+  - `tests/attribution/test_financial.py` [NEW] — 3 unit tests covering UTXO cluster merging, Monero stealth validation, and financial evidence emission
+- **Verification**:
+  - `python -m pytest tests/attribution/test_financial.py -v` → 3/3 passed
+  - `python -m pytest tests/ -v` → 56/56 passed cleanly
+
+### [2026-08-30] Krishna — Automated Evidence Waterfall & Attribution Report Formatting (`packages/attribution/reporting.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Implemented `AttributionReportFormatter` to render step-by-step mathematical evidence waterfall breakdowns, CLI ASCII visual contribution diagrams, and GitHub-flavored Markdown reports.
+  - Generates JSON summary payloads for API response pipelines (`export_summary_json`).
+- **Files Touched**:
+  - `packages/attribution/reporting.py` [NEW] — `AttributionReportFormatter`, `build_waterfall_breakdown()`, `format_ascii_waterfall()`, `format_markdown_report()`, `export_summary_json()`
+  - `packages/attribution/__init__.py` — re-exported reporting symbols
+  - `tests/attribution/test_reporting.py` [NEW] — 5 unit tests covering waterfall accounting, ASCII chart rendering, Markdown output, and JSON export
+- **Verification**:
+  - `python -m pytest tests/attribution/test_reporting.py -v` → 5/5 passed
+  - `python -m pytest tests/ -v` → 61/61 passed cleanly
+
+
+
+
 
