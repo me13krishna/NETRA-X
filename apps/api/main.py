@@ -216,6 +216,100 @@ def get_actor(id: str, db: Session = Depends(get_db), user: User = Depends(get_c
     )
 
 
+@app.get("/api/v1/graph")
+def get_global_graph(
+    limit: int = Query(400, ge=10, le=2000),
+    include_singletons: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The whole map: every actor, joined by the identifiers they share.
+
+    The per-actor endpoint answers "what is attached to this persona". This one
+    answers the question the product actually exists for -- which differently
+    named personas touch the same thing. Identifier nodes are therefore merged
+    by VALUE, not by row: one wallet cluster reused by three storefronts is a
+    single node with three edges, which is what makes the reuse visible at all.
+    """
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+
+    actors = db.query(Actor).limit(limit).all()
+    actor_ids = {a.id for a in actors}
+    for a in actors:
+        nodes.append({
+            "id": a.id,
+            "label": a.primary_alias,
+            "type": "Actor",
+            "category": a.category,
+            "confidence": a.confidence,
+        })
+
+    def add_edge(eid, src, dst, label, conf):
+        edges.append({"id": eid, "source": src, "target": dst, "label": label, "confidence": conf})
+
+    # --- Handles, merged by value. A value used by two actors becomes a hinge.
+    handle_owners: Dict[str, List[Any]] = {}
+    for al in db.query(Alias).all():
+        if al.actor_id in actor_ids:
+            handle_owners.setdefault(al.value.strip().lower(), []).append(al)
+
+    for value, rows in handle_owners.items():
+        owners = {r.actor_id for r in rows}
+        shared = len(owners) > 1
+        if not shared and not include_singletons:
+            continue
+        node_id = f"handle::{value}"
+        nodes.append({
+            "id": node_id,
+            "label": rows[0].value,
+            "type": "SharedHandle" if shared else "Alias",
+            "shared_by": len(owners),
+        })
+        for r in rows:
+            add_edge(f"e_h_{r.id}", r.actor_id, node_id, "USES_HANDLE", r.confidence)
+
+    # --- Wallet clusters. This is the "same wallet, different names" link:
+    # co-input ownership says one operator controls the cluster.
+    cluster_wallets: Dict[str, List[Any]] = {}
+    for w in db.query(Wallet).all():
+        if w.actor_id in actor_ids and w.cluster_id:
+            cluster_wallets.setdefault(w.cluster_id, []).append(w)
+
+    for cluster_id, rows in cluster_wallets.items():
+        owners = {r.actor_id for r in rows}
+        if len(owners) < 2 and not include_singletons:
+            continue
+        node_id = f"wallet::{cluster_id}"
+        chains = sorted({r.chain for r in rows})
+        nodes.append({
+            "id": node_id,
+            "label": cluster_id,
+            "type": "SharedWallet" if len(owners) > 1 else "Wallet",
+            "shared_by": len(owners),
+            "detail": f"{len(rows)} addresses / {', '.join(chains)}",
+        })
+        for owner in owners:
+            add_edge(f"e_w_{cluster_id}_{owner}", owner, node_id, "CONTROLS_WALLET_CLUSTER", 0.90)
+
+    # --- PGP keys.
+    for k in db.query(PGPKey).all():
+        if k.actor_id not in actor_ids or not include_singletons:
+            continue
+        node_id = f"pgp::{k.fingerprint}"
+        nodes.append({"id": node_id, "label": k.key_id, "type": "PGPKey"})
+        add_edge(f"e_k_{k.id}", k.actor_id, node_id, "USES_PGP", 0.99)
+
+    # --- Scored attribution links between actors.
+    for h in db.query(Hypothesis).all():
+        if h.subject_entity_id in actor_ids and h.object_entity_id in actor_ids:
+            add_edge(f"hyp_{h.id}", h.subject_entity_id, h.object_entity_id,
+                     h.status, h.calibrated_prob)
+
+    return {"nodes": nodes, "edges": edges,
+            "stats": {"actors": len(actors), "nodes": len(nodes), "edges": len(edges)}}
+
+
 @app.get("/api/v1/actors/{id}/graph")
 def get_actor_graph(id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     proj = GraphProjectionService()
@@ -238,7 +332,62 @@ def get_actor_graph(id: str, db: Session = Depends(get_db), user: User = Depends
             nodes.append({"id": w.id, "label": w.address[:10] + "...", "type": "Wallet"})
             edges.append({"id": f"edge_{w.id}", "source": actor.id, "target": w.id, "label": "ACCOUNT_USES_WALLET", "confidence": 0.90})
 
-        graph = {"nodes": nodes, "edges": edges}
+        # Second hop: actors this one is linked to by an attribution hypothesis.
+        # Without this the view is a star -- one actor and its own identifiers --
+        # which hides the thing the product exists to show, namely that separate
+        # personas resolve to the same operator. Peer-to-peer links among the
+        # neighbours are included too, so a cluster reads as a cluster.
+        links = db.query(Hypothesis).filter(
+            or_(Hypothesis.subject_entity_id == id, Hypothesis.object_entity_id == id)
+        ).all()
+
+        neighbour_ids = set()
+        for h in links:
+            other = h.object_entity_id if h.subject_entity_id == id else h.subject_entity_id
+            neighbour_ids.add(other)
+
+        if neighbour_ids:
+            neighbours = db.query(Actor).filter(Actor.id.in_(neighbour_ids)).all()
+            found = {a.id for a in neighbours}
+            for a in neighbours:
+                nodes.append({"id": a.id, "label": a.primary_alias, "type": "LinkedActor"})
+
+            for h in links:
+                other = h.object_entity_id if h.subject_entity_id == id else h.subject_entity_id
+                if other not in found:
+                    continue
+                edges.append({
+                    "id": f"hyp_{h.id}",
+                    "source": h.subject_entity_id,
+                    "target": h.object_entity_id,
+                    "label": h.status,
+                    "confidence": h.calibrated_prob,
+                })
+
+            # Links between the neighbours themselves.
+            peer = db.query(Hypothesis).filter(
+                Hypothesis.subject_entity_id.in_(found),
+                Hypothesis.object_entity_id.in_(found),
+            ).all()
+            for h in peer:
+                edges.append({
+                    "id": f"hyp_{h.id}",
+                    "source": h.subject_entity_id,
+                    "target": h.object_entity_id,
+                    "label": h.status,
+                    "confidence": h.calibrated_prob,
+                })
+
+        # De-duplicate: a hypothesis can be reached from both loops above.
+        seen = set()
+        unique_edges = []
+        for e in edges:
+            if e["id"] in seen:
+                continue
+            seen.add(e["id"])
+            unique_edges.append(e)
+
+        graph = {"nodes": nodes, "edges": unique_edges}
 
     return graph
 

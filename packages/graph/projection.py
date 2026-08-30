@@ -4,12 +4,23 @@ Provides asynchronous projection workers, Cypher query helpers, and full graph r
 """
 
 import os
+import time
 from typing import Any, Dict, List, Optional
 from neo4j import GraphDatabase, Driver
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apps.api.database.models import Actor, Alias, Account, PGPKey, Wallet, OnionService, Server, Hypothesis
+
+# When Neo4j is not running -- the default for local dev and for the Render
+# deployment, neither of which provisions it -- every graph request paid the
+# full Bolt connect timeout before falling back to relational topology. That
+# was ~4s per request, which the UI showed as a stuck "Rendering..." overlay on
+# every actor switch. Failures are now remembered for a short window so the
+# fallback is immediate, while still retrying periodically in case Neo4j
+# comes up later.
+_UNAVAILABLE_UNTIL = 0.0
+_COOLDOWN_SECONDS = 30.0
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
@@ -25,7 +36,12 @@ class GraphProjectionService:
 
     def get_driver(self) -> Driver:
         if self._driver is None:
-            self._driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            self._driver = GraphDatabase.driver(
+                self.uri,
+                auth=(self.user, self.password),
+                connection_timeout=2.0,
+                max_transaction_retry_time=2.0,
+            )
         return self._driver
 
     def close(self):
@@ -179,7 +195,14 @@ class GraphProjectionService:
         return counts
 
     def fetch_actor_subgraph(self, actor_id: str) -> Dict[str, Any]:
-        """Fetch network subgraph for Cytoscape.js visualization."""
+        """Fetch network subgraph for Cytoscape.js visualization.
+
+        Returns empty node/edge lists when Neo4j is unreachable; the API treats
+        that as "fall back to relational topology".
+        """
+        global _UNAVAILABLE_UNTIL
+        if time.monotonic() < _UNAVAILABLE_UNTIL:
+            return {"nodes": [], "edges": []}
         try:
             driver = self.get_driver()
             nodes: List[Dict] = []
@@ -227,5 +250,7 @@ class GraphProjectionService:
 
             return {"nodes": nodes, "edges": edges}
         except Exception:
+            _UNAVAILABLE_UNTIL = time.monotonic() + _COOLDOWN_SECONDS
+            self.close()
             # Fallback if Neo4j is offline or not installed
             return {"nodes": [], "edges": []}
