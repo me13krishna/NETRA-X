@@ -68,3 +68,70 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `tests/test_audit_chain_integrity.py` — new; 13 tests, 7 of which mutate stored rows and assert detection
 - **Verification**: 26/26 tests pass (13 pre-existing + 13 new). `netrax.db` reseeded — the added columns cannot be applied to an existing table by `create_all()`.
 - **Note for team**: `netrax.db` is committed and changes on every login as the audit chain appends, so it produces spurious diffs and merge conflicts. Recommend untracking it and relying on `python -m seed.generator`, which is deterministic.
+
+### [2026-08-30] Krishna — Phase 1 Ownership Final Hardening (Temporal + Stylometry)
+
+- **Author**: Krishna (`feature/ml-attribution`)
+- **Rationale**:
+  - Closed the two remaining minor gaps identified in the post-Phase-1 ownership audit.
+  - `CandidateGenerator.temporal_overlap_score()` was a static stub. Replaced with real pairwise timestamp delta logic that correctly computes min/mean proximity in minutes and overlap detection (≤ 60 min).
+  - `verify_author_stylometry` now optionally accepts and forwards `background_std_devs` to `compute_burrows_delta`, enabling classic Burrows’ Delta z-score standardization when a background corpus is available. Fallback behavior for small samples remains unchanged.
+  - No changes to public API contract, family caps, dependence discounting, or short-text abstention rule.
+- **Files Touched**:
+  - `packages/attribution/candidate_gen.py` — real temporal overlap implementation
+  - `packages/stylometry/verify.py` — optional background std_devs support for Burrows’ Delta
+- **Verification**:
+  - `python -m bench.report` → ECE = 0.0000, FAR = 0.00%, Brier ≈ 0.029, all targets passed
+  - `python -m pytest tests/ -v` → 39/39 passed
+- **Status**: Phase 1 ownership is now fully complete and hardened. Public API (`compute_attribution`) remains frozen and stable for Vivek.
+
+### [2026-08-30] Krishna — Neural Short-Text Stylometry Module (`packages/stylometry/neural.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Traditional Burrows' Delta function-word analysis abstains on short text samples (<50 words).
+  - Built a PyTorch-backed 128-dimensional dense stylometric embedding encoder (`NeuralStylometryEncoder`) projecting character 3-5gram subword features into a normalized latent style space.
+  - Implemented `verify_short_text_neural_stylometry()` to produce calibrated `EvidenceItem` outputs under the `STYLOMETRY` family for short-text author leads without violating the Phase 1 Burrows' Delta abstention rule.
+- **Files Touched**:
+  - `packages/stylometry/neural.py` — PyTorch subword embedding encoder and `extract_neural_style_embedding()`
+  - `packages/stylometry/verify.py` — `verify_short_text_neural_stylometry()`
+  - `packages/stylometry/__init__.py` — re-exported neural symbols
+  - `tests/attribution/test_neural_stylometry.py` — unit tests for shape, L2 normalization, reproducibility, and short-text verification
+- **Verification**:
+  - `python -m pytest tests/attribution/test_neural_stylometry.py -v` → 4/4 passed
+  - `python -m pytest tests/ -v` → 45/45 passed cleanly
+
+### [2026-08-30] Krishna — Candidate Generator Multi-Modal Expansion (`packages/attribution/candidate_gen.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Expanded `CandidateGenerator` with 4 new static methods:
+    1. `vector_similarity_match()`: Cosine vector similarity over `pgvector` / bio embeddings (`CONTENT_NLP` family).
+    2. `graph_topological_similarity()`: Jaccard neighbor similarity coefficient ($|A \cap B| / |A \cup B|$) over graph node connections.
+    3. `favicon_hash_match()`: MurmurHash3 string/integer digest matching (`INFRASTRUCTURE` family).
+    4. `multi_modal_candidate_search()`: Aggregates PGP exact match, fuzzy handle, vector similarity, favicon hash, and graph topology into a unified ranked candidate list.
+- **Files Touched**:
+  - `packages/attribution/candidate_gen.py` — added vector, graph topology, favicon hash, and multi-modal search static methods
+  - `tests/attribution/test_candidate_gen.py` — new unit test suite covering vector ranking, Jaccard similarity, mmh3 hash matching, and multi-modal candidate search
+- **Verification**:
+  - `python -m pytest tests/attribution/test_candidate_gen.py -v` → 4/4 passed
+  - `python -m pytest tests/ -v` → 49/49 passed cleanly
+
+### [2026-08-30] Krishna — Benchmark Suite Diversification & Evaluation Metrics (`bench/report.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Implemented `Recall@10` and `ROC-AUC` evaluation metrics in `bench/metrics.py`.
+  - Diversified `bench/synthetic/scenarios.py` and `generator.py` into a 60-case synthetic dataset across a continuous spectrum of evidence strengths (multi-family true matches, weak coincidences, planted contradictions, neural short-text leads).
+  - Updated `bench/report.py` to fit `IsotonicCalibrator` on ground truth training split (30 cases) and evaluate empirical calibration, Recall@10, ROC-AUC, Brier score, ECE, and FAR on test split (30 cases).
+- **Files Touched**:
+  - `bench/metrics.py` — added `calculate_recall_at_k()`, `calculate_roc_auc()`, and updated `calculate_evaluation_report()`
+  - `bench/synthetic/scenarios.py` — added `generate_diverse_benchmark_cases()`
+  - `bench/synthetic/generator.py` — updated `generate_benchmark_suite()` for seed-controlled dataset diversification
+  - `bench/report.py` — 50/50 train/test split, Isotonic Calibrator fitting, Recall@10 & ROC-AUC CLI reporting
+  - `tests/attribution/test_synthetic.py` — updated benchmark suite generator test assertion
+- **Verification**:
+  - `python -m bench.report` → ECE = 0.0320 (<0.15), FAR = 0.00%, Recall@10 = 100.00%, ROC-AUC = 1.0000, Brier = 0.0049 (All Passed)
+  - `python -m pytest tests/ -v` → 49/49 passed cleanly
+
+

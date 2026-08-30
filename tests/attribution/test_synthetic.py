@@ -47,7 +47,10 @@ def test_actor_c_adversarial_clone_contradiction():
 
 def test_benchmark_suite_generation():
     """
-    Test generating benchmark dataset with multiple replications.
+    Test generating benchmark dataset with diversified cases.
     """
-    suite = generate_benchmark_suite(num_replications=5)
-    assert len(suite) == 5 * 3 + 1  # 3 scenarios * 5 + 1 short text scenario
+    suite = generate_benchmark_suite(num_cases=60, seed=42)
+    assert len(suite) == 60
+    assert any(c.ground_truth_match == 1 for c in suite)
+    assert any(c.ground_truth_match == 0 for c in suite)
+
