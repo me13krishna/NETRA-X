@@ -55,7 +55,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
               onClick={() => setStatusFilter(st)}
               className={`px-3 py-1.5 rounded-lg border font-bold transition ${
                 statusFilter === st
-                  ? "bg-netra-purple text-white border-netra-purple shadow-lg shadow-netra-purple/30"
+                  ? "bg-netra-purple text-netra-bg border-netra-purple shadow-lg shadow-netra-purple/30"
                   : "bg-netra-bg text-netra-muted border-netra-border hover:border-netra-purple/40"
               }`}
             >
@@ -65,8 +65,9 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
         </div>
       </div>
 
-      {/* Hypothesis Cards */}
-      <div className="space-y-3">
+      {/* Hypothesis Cards. `stagger` sequences the children so results land
+          one after another rather than as a single block. */}
+      <div className="space-y-3 stagger">
         {filteredHypotheses.length === 0 ? (
           <div className="p-8 text-center bg-netra-surface border border-netra-border rounded-xl text-netra-subtle font-mono text-xs">
             No hypotheses matching status filter '{statusFilter}'.
@@ -80,7 +81,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
             return (
               <div
                 key={h.id}
-                className="bg-netra-surface border border-netra-border hover:border-netra-purple/60 rounded-xl p-5 transition shadow-lg space-y-4"
+                className="bg-netra-surface border border-netra-border rounded-xl p-5 shadow-lg space-y-4 row-live"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-netra-border/50 pb-3">
                   <div className="flex items-center space-x-3">
@@ -100,9 +101,9 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
                       </span>
                     )}
                     <span className={`px-2.5 py-1 rounded-md border font-bold ${
-                      h.status === "ACCEPTED" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" :
+                      h.status === "ACCEPTED" ? "bg-netra-valid/15 text-netra-valid border-netra-valid/40" :
                       h.status === "REJECTED" ? "bg-red-500/20 text-red-400 border-red-500/40" :
-                      "bg-amber-500/20 text-amber-400 border-amber-500/40"
+                      "bg-netra-amber/20 text-netra-amber border-netra-amber/40"
                     }`}>
                       {h.status}
                     </span>
@@ -126,7 +127,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
                     <div className="flex items-center space-x-2 pt-1">
                       <button
                         onClick={() => onSelectHypothesis(h.id)}
-                        className="flex-1 py-1.5 bg-netra-purple hover:bg-netra-purple/80 text-white font-bold rounded text-xs transition flex items-center justify-center space-x-1"
+                        className="flex-1 py-1.5 bg-netra-purple hover:bg-netra-purple/80 text-netra-bg font-bold rounded text-xs transition flex items-center justify-center space-x-1"
                       >
                         <span>Waterfall Detail</span>
                         <ArrowUpRight className="w-3.5 h-3.5" />
@@ -140,7 +141,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
                   <span className="text-netra-subtle mr-2">Submit Analyst Review:</span>
                   <button
                     onClick={() => onReviewDecision(h.id, "ACCEPT")}
-                    className="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 rounded font-bold transition flex items-center space-x-1"
+                    className="px-3 py-1 bg-netra-valid/15 hover:bg-netra-valid/25 text-netra-valid border border-netra-valid/40 rounded font-bold transition flex items-center space-x-1"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>ACCEPT</span>
@@ -154,7 +155,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
                   </button>
                   <button
                     onClick={() => onReviewDecision(h.id, "INSUFFICIENT")}
-                    className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 rounded font-bold transition flex items-center space-x-1"
+                    className="px-3 py-1 bg-netra-amber/20 hover:bg-netra-amber/30 text-netra-amber border border-netra-amber/40 rounded font-bold transition flex items-center space-x-1"
                   >
                     <Clock className="w-3.5 h-3.5" />
                     <span>INSUFFICIENT</span>

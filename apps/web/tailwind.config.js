@@ -27,15 +27,29 @@ module.exports = {
           border: "#282828",
           hover: "#1E1E1E",
 
-          // THE accent. Aviation/hazard red -- the only chromatic colour in the
-          // system. Was electric purple #8B2CFF, which with the cyan secondary
-          // was the "AI gradient" signature the redesign audit calls the most
-          // common tell.
-          purple: "#E61919",
-          deepViolet: "#A31212",
+          // Hue now carries MEANING rather than brand. Previously `purple` and
+          // `red` were both #E61919, so 126 of ~160 accent usages rendered the
+          // same alarm colour -- which meant nothing on screen could actually
+          // read as urgent, because everything did.
+          //
+          //   purple  -> interactive chrome, selection, focus, positive LLR
+          //   red     -> critical ONLY: contradictions, rejections, negative LLR
+          //   valid   -> verified / accepted / online
+          //   amber   -> flagged, awaiting analyst review
+          //
+          // The call sites were already semantically correct: `netra-red` was
+          // used for contradictions and negative scores, `netra-purple` for
+          // ordinary chrome. Repointing this one token separates them without
+          // touching 96 class strings.
+          //
+          // 9.46:1 on the #0A0A0A ground (AA passes at 4.5). Worth noting the
+          // hazard red only reaches 4.26:1, which is itself a reason to keep it
+          // off small text and on borders, fills and icons.
+          purple: "#35C2E8",
+          deepViolet: "#1E86A3",
 
           // Was a second accent (#19D9D0). Demoted to white phosphor so the
-          // ~38 `netra-cyan` usages become plain primary text. One accent only.
+          // ~38 `netra-cyan` usages become plain primary text.
           cyan: "#EAEAEA",
 
           text: "#EAEAEA",
@@ -45,7 +59,7 @@ module.exports = {
           // Terminal green, permitted for status readouts only -- never as a
           // general text colour.
           valid: "#4AF626",
-          amber: "#C8811A",
+          amber: "#F0A020",
           red: "#E61919",
         },
       },

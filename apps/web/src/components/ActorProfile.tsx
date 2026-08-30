@@ -151,7 +151,7 @@ export const ActorProfile: React.FC<ActorProfileProps> = ({
               </p>
               <button
                 onClick={() => onNavigate("attribution_lab")}
-                className="w-full py-2 bg-netra-purple/20 text-netra-purple hover:bg-netra-purple hover:text-white border border-netra-purple/40 rounded text-xs font-medium transition"
+                className="w-full py-2 bg-netra-purple/20 text-netra-purple hover:bg-netra-purple hover:text-netra-bg border border-netra-purple/40 rounded text-xs font-medium transition"
               >
                 Inspect in Attribution Lab
               </button>
