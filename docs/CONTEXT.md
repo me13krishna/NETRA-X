@@ -134,4 +134,20 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `python -m bench.report` → ECE = 0.0320 (<0.15), FAR = 0.00%, Recall@10 = 100.00%, ROC-AUC = 1.0000, Brier = 0.0049 (All Passed)
   - `python -m pytest tests/ -v` → 49/49 passed cleanly
 
+### [2026-08-30] Krishna — Identity Graph Embedding & Link Prediction (`packages/attribution/graph_embedding.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Built PyTorch Skip-Gram neural network (`GraphSkipGramModel`) and Node2Vec biased random-walk embedder (`Node2VecGraphEmbedder`).
+  - Projects identity graph nodes (Actors, Aliases, Wallets, Favicons, PGP Keys) into 64-dimensional latent embedding vectors.
+  - Implemented `LinkPredictor` computing cosine similarity, Euclidean distance, and emitting calibrated `EvidenceItem` outputs for Bayesian Evidence Fusion.
+- **Files Touched**:
+  - `packages/attribution/graph_embedding.py` [NEW] — `GraphSkipGramModel`, `Node2VecGraphEmbedder`, `LinkPredictor`, `fit_graph_embeddings()`, `evaluate_graph_link()`
+  - `packages/attribution/__init__.py` — re-exported graph embedding symbols
+  - `tests/attribution/test_graph_embedding.py` [NEW] — 4 unit tests covering walk sampling, embedding training, link prediction, and evidence item emission
+- **Verification**:
+  - `python -m pytest tests/attribution/test_graph_embedding.py -v` → 4/4 passed
+  - `python -m pytest tests/ -v` → 53/53 passed cleanly
+
+
 
