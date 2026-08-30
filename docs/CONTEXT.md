@@ -99,4 +99,39 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `tests/attribution/test_neural_stylometry.py` — unit tests for shape, L2 normalization, reproducibility, and short-text verification
 - **Verification**:
   - `python -m pytest tests/attribution/test_neural_stylometry.py -v` → 4/4 passed
-  - `python -m pytest tests/ -v` → 45/45 passed cleanly
+  - `python -m pytest tests/ -v` → 45/45 passed cleanly
+
+### [2026-08-30] Krishna — Candidate Generator Multi-Modal Expansion (`packages/attribution/candidate_gen.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Expanded `CandidateGenerator` with 4 new static methods:
+    1. `vector_similarity_match()`: Cosine vector similarity over `pgvector` / bio embeddings (`CONTENT_NLP` family).
+    2. `graph_topological_similarity()`: Jaccard neighbor similarity coefficient ($|A \cap B| / |A \cup B|$) over graph node connections.
+    3. `favicon_hash_match()`: MurmurHash3 string/integer digest matching (`INFRASTRUCTURE` family).
+    4. `multi_modal_candidate_search()`: Aggregates PGP exact match, fuzzy handle, vector similarity, favicon hash, and graph topology into a unified ranked candidate list.
+- **Files Touched**:
+  - `packages/attribution/candidate_gen.py` — added vector, graph topology, favicon hash, and multi-modal search static methods
+  - `tests/attribution/test_candidate_gen.py` — new unit test suite covering vector ranking, Jaccard similarity, mmh3 hash matching, and multi-modal candidate search
+- **Verification**:
+  - `python -m pytest tests/attribution/test_candidate_gen.py -v` → 4/4 passed
+  - `python -m pytest tests/ -v` → 49/49 passed cleanly
+
+### [2026-08-30] Krishna — Benchmark Suite Diversification & Evaluation Metrics (`bench/report.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Implemented `Recall@10` and `ROC-AUC` evaluation metrics in `bench/metrics.py`.
+  - Diversified `bench/synthetic/scenarios.py` and `generator.py` into a 60-case synthetic dataset across a continuous spectrum of evidence strengths (multi-family true matches, weak coincidences, planted contradictions, neural short-text leads).
+  - Updated `bench/report.py` to fit `IsotonicCalibrator` on ground truth training split (30 cases) and evaluate empirical calibration, Recall@10, ROC-AUC, Brier score, ECE, and FAR on test split (30 cases).
+- **Files Touched**:
+  - `bench/metrics.py` — added `calculate_recall_at_k()`, `calculate_roc_auc()`, and updated `calculate_evaluation_report()`
+  - `bench/synthetic/scenarios.py` — added `generate_diverse_benchmark_cases()`
+  - `bench/synthetic/generator.py` — updated `generate_benchmark_suite()` for seed-controlled dataset diversification
+  - `bench/report.py` — 50/50 train/test split, Isotonic Calibrator fitting, Recall@10 & ROC-AUC CLI reporting
+  - `tests/attribution/test_synthetic.py` — updated benchmark suite generator test assertion
+- **Verification**:
+  - `python -m bench.report` → ECE = 0.0320 (<0.15), FAR = 0.00%, Recall@10 = 100.00%, ROC-AUC = 1.0000, Brier = 0.0049 (All Passed)
+  - `python -m pytest tests/ -v` → 49/49 passed cleanly
+
+

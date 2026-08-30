@@ -213,3 +213,181 @@ def generate_short_text_abstention_scenario() -> SyntheticBenchmarkCase:
         expected_decision="INSUFFICIENT_EVIDENCE",
         description="Short text sample (<50 words) triggers stylometry abstention rule.",
     )
+
+
+def generate_diverse_benchmark_cases(num_cases: int = 60, seed: int = 42) -> List[SyntheticBenchmarkCase]:
+    """
+    Generates a diversified, realistic synthetic benchmark dataset across a continuous spectrum
+    of evidence strengths, source reliabilities, planted contradictions, and neural stylometry leads.
+    """
+    import random
+    from packages.stylometry.verify import verify_short_text_neural_stylometry
+
+    rng = random.Random(seed)
+    cases: List[SyntheticBenchmarkCase] = []
+
+    # Preserve core hero scenario cases
+    cases.append(generate_actor_a_scenario())
+    cases.append(generate_actor_b_scenario())
+    cases.append(generate_actor_c_scenario())
+    cases.append(generate_short_text_abstention_scenario())
+
+    scenario_types = ["strong_match", "moderate_match", "weak_coincidence", "adversarial_imposter", "neural_short_text"]
+    remaining_count = max(0, num_cases - len(cases))
+
+    for i in range(remaining_count):
+        stype = scenario_types[i % len(scenario_types)]
+        cid = f"synth_{stype}_{i+1:02d}"
+
+        if stype == "strong_match":
+            # True match with high LLR across 3-4 families
+            rel = rng.uniform(0.85, 1.0)
+            items = [
+                EvidenceItem(
+                    id=f"{cid}_pgp",
+                    feature_name="pgp_fingerprint_exact",
+                    family=EvidenceFamily.EXACT_IDENTITY,
+                    dependence_group="pgp_group",
+                    m_i=rng.uniform(0.98, 0.999),
+                    u_i=0.0000001,
+                    source_reliability=rel,
+                ),
+                EvidenceItem(
+                    id=f"{cid}_btc",
+                    feature_name="btc_address_reuse",
+                    family=EvidenceFamily.FINANCIAL,
+                    dependence_group="btc_wallet",
+                    m_i=rng.uniform(0.90, 0.96),
+                    u_i=0.00005,
+                    source_reliability=rel,
+                ),
+                EvidenceItem(
+                    id=f"{cid}_favicon",
+                    feature_name="favicon_mmh3_hash",
+                    family=EvidenceFamily.INFRASTRUCTURE,
+                    dependence_group="infra_group",
+                    m_i=0.88,
+                    u_i=0.0002,
+                )
+            ]
+            cases.append(
+                SyntheticBenchmarkCase(
+                    case_id=cid,
+                    target_actor=f"actor_tgt_{i}",
+                    candidate_actor=f"actor_cand_{i}",
+                    ground_truth_match=1,
+                    evidence_items=items,
+                    expected_decision="HIGH_CONFIDENCE_LINK",
+                    description="Strong multi-family true positive match",
+                )
+            )
+
+        elif stype == "moderate_match":
+            # True match with moderate LLR (2 families)
+            items = [
+                EvidenceItem(
+                    id=f"{cid}_btc",
+                    feature_name="btc_co_input_clustering",
+                    family=EvidenceFamily.FINANCIAL,
+                    dependence_group="btc_cluster",
+                    m_i=rng.uniform(0.85, 0.92),
+                    u_i=0.001,
+                ),
+                EvidenceItem(
+                    id=f"{cid}_simhash",
+                    feature_name="simhash_clone_95",
+                    family=EvidenceFamily.CONTENT_NLP,
+                    dependence_group="content_nlp",
+                    m_i=0.80,
+                    u_i=0.005,
+                )
+            ]
+            cases.append(
+                SyntheticBenchmarkCase(
+                    case_id=cid,
+                    target_actor=f"actor_tgt_{i}",
+                    candidate_actor=f"actor_cand_{i}",
+                    ground_truth_match=1,
+                    evidence_items=items,
+                    expected_decision="HIGH_CONFIDENCE_LINK",
+                    description="Moderate 2-family true positive match",
+                )
+            )
+
+        elif stype == "weak_coincidence":
+            # Non-match with weak single-family coincidence LLR
+            items = [
+                EvidenceItem(
+                    id=f"{cid}_handle",
+                    feature_name="handle_trigram_fuzzy",
+                    family=EvidenceFamily.SEMANTIC_HANDLE,
+                    dependence_group="handle_grp",
+                    m_i=rng.uniform(0.45, 0.65),
+                    u_i=rng.uniform(0.10, 0.25),
+                )
+            ]
+            cases.append(
+                SyntheticBenchmarkCase(
+                    case_id=cid,
+                    target_actor=f"actor_tgt_{i}",
+                    candidate_actor=f"actor_cand_{i}",
+                    ground_truth_match=0,
+                    evidence_items=items,
+                    expected_decision="INSUFFICIENT_EVIDENCE",
+                    description="Weak handle coincidence non-match",
+                )
+            )
+
+        elif stype == "adversarial_imposter":
+            # Non-match imposter with superficial match + planted contradiction
+            c_weight = rng.choice([8.0, 15.0, 20.0])
+            c_feature = rng.choice(["temporal_impossible_overlap", "pgp_key_conflict"])
+            items = [
+                EvidenceItem(
+                    id=f"{cid}_handle",
+                    feature_name="handle_trigram_fuzzy",
+                    family=EvidenceFamily.SEMANTIC_HANDLE,
+                    dependence_group="handle_grp",
+                    m_i=0.80,
+                    u_i=0.05,
+                ),
+                EvidenceItem(
+                    id=f"{cid}_contra",
+                    feature_name=c_feature,
+                    family=EvidenceFamily.TEMPORAL if c_feature.startswith("temporal") else EvidenceFamily.EXACT_IDENTITY,
+                    dependence_group="contradiction_group",
+                    is_contradiction=True,
+                    contradiction_weight=c_weight,
+                )
+            ]
+            cases.append(
+                SyntheticBenchmarkCase(
+                    case_id=cid,
+                    target_actor=f"actor_tgt_{i}",
+                    candidate_actor=f"actor_cand_{i}",
+                    ground_truth_match=0,
+                    evidence_items=items,
+                    expected_decision="CONTRADICTION_REJECTED",
+                    description="Adversarial imposter suppressed by contradiction penalty",
+                )
+            )
+
+        elif stype == "neural_short_text":
+            # True match using Neural Short-Text Stylometry
+            ep1 = StylometryEpisode.from_single_text(f"actor_{i}", "ep1", "Checking onion service deployment status.")
+            ep2 = StylometryEpisode.from_single_text(f"actor_{i}", "ep2", "Checking onion service deployment status.")
+            item = verify_short_text_neural_stylometry(ep1, ep2, item_id=f"{cid}_neural_sty")
+            cases.append(
+                SyntheticBenchmarkCase(
+                    case_id=cid,
+                    target_actor=f"actor_tgt_{i}",
+                    candidate_actor=f"actor_cand_{i}",
+                    ground_truth_match=1,
+                    evidence_items=[item],
+                    expected_decision="HIGH_CONFIDENCE_LINK",
+                    description="Neural short-text stylometry match lead",
+                )
+            )
+
+    return cases
+
