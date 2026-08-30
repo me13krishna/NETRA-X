@@ -7,7 +7,7 @@ onion services, handles, emails, computes Burrows' Delta stylometric distances, 
 import base64
 import math
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import mmh3
 
 

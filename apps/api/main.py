@@ -31,13 +31,13 @@ from packages.schemas.models import (
     PGPKeySchema, WalletSchema, OnionServiceSchema, EvidenceSchema,
     EvidenceWaterfallItem, HypothesisSchema, ReviewRequest, AuditLogSchema,
     SearchResponse, SearchResultItem, CaseCreate, CaseResponse, DecisionEnum,
-    HypothesisStatus
+    HypothesisStatus, IngestRequest, IngestResponse, ExtractedEvidence
 )
 from apps.api.database.session import SyncSessionLocal, init_db_sync
 from apps.api.database.models import (
     User, Case, CaseMember, Actor, Alias, Account, PGPKey, Wallet,
     OnionService, Server, Artifact, Evidence, Hypothesis, HypothesisEvidence,
-    AnalystReview, AuditLog
+    AnalystReview, AuditLog, Source, Observation
 )
 
 app = FastAPI(
@@ -424,6 +424,167 @@ def get_actor_timeline(id: str, db: Session = Depends(get_db), user: User = Depe
 
 
 # --- EVIDENCE LEDGER ENDPOINTS ---
+@app.post("/api/v1/evidence", response_model=IngestResponse, status_code=201)
+def ingest_evidence(
+    body: IngestRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Ingest one raw observation and extract identifiers from it.
+
+    Before this existed the ledger had no write path at all: evidence arrived
+    only by running a seed script, which meant the collection claim in the
+    architecture had nothing behind it at runtime.
+
+    The order here is deliberate and is the provenance chain:
+
+        Source (lawful basis)
+          -> Artifact   (immutable bytes, SHA-256 digest)
+          -> Observation(what was seen, and where)
+          -> Evidence   (what was extracted from it)
+          -> audit event
+
+    Every Evidence row is therefore reachable back to the exact bytes it came
+    from, which is the property the whole attribution story rests on. Ingest is
+    idempotent on the artifact digest: re-posting identical content returns the
+    original observation instead of duplicating evidence, so a retried collector
+    cannot inflate the ledger.
+    """
+    from workers.extraction import ExtractionEngine
+    from workers.collection.warc_writer import ImmutableArtifact
+
+    raw_bytes = body.raw_content.encode("utf-8")
+    artifact_meta = ImmutableArtifact(
+        raw_bytes=raw_bytes,
+        source_uri=body.source_uri or f"netrax://manual/{body.source_name}",
+        content_type="text/plain",
+    )
+
+    # Reuse a source of the same name and basis rather than creating a new row
+    # per post; the pair is what identifies a collection channel.
+    source = (
+        db.query(Source)
+        .filter(Source.name == body.source_name,
+                Source.lawful_basis == body.lawful_basis.value)
+        .first()
+    )
+    if source is None:
+        source = Source(
+            id=uuidv7_str(),
+            name=body.source_name,
+            source_type=body.source_type.value,
+            lawful_basis=body.lawful_basis.value,
+            base_uri=body.source_uri,
+            is_active=True,
+        )
+        db.add(source)
+        db.flush()
+
+    existing = db.query(Artifact).filter(Artifact.sha256 == artifact_meta.sha256).first()
+    if existing is not None:
+        prior = (
+            db.query(Observation)
+            .filter(Observation.content_hash == artifact_meta.sha256)
+            .first()
+        )
+        return IngestResponse(
+            observation_id=prior.id if prior else "",
+            artifact_sha256=artifact_meta.sha256,
+            source_id=source.id,
+            lawful_basis=source.lawful_basis,
+            duplicate=True,
+            extracted_count=0,
+            xmr_abstain=False,
+            evidence=[],
+        )
+
+    artifact = Artifact(
+        id=uuidv7_str(),
+        sha256=artifact_meta.sha256,
+        storage_uri=artifact_meta.source_uri,
+        content_type=artifact_meta.content_type,
+        size=artifact_meta.size,
+    )
+    db.add(artifact)
+
+    observation = Observation(
+        id=uuidv7_str(),
+        source_id=source.id,
+        raw_content=body.raw_content,
+        content_hash=artifact_meta.sha256,
+        metadata_json=json.dumps({
+            "source_type": source.source_type,
+            "ingested_by": user.id,
+        }),
+    )
+    db.add(observation)
+    db.flush()
+
+    extracted = ExtractionEngine.extract_entities(body.raw_content)
+
+    # (result key, evidence kind, dependence group, confidence)
+    #
+    # The dependence group is what stops the fusion engine double-counting: two
+    # wallets from one post are one financial observation, not two independent
+    # ones, so they share a group and the lambda discount applies.
+    PLAN = [
+        ("pgp_fingerprints", "PGP_FINGERPRINT", "pgp_identity", 0.99),
+        ("btc_addresses", "BTC_ADDRESS", "wallet_cluster_btc", 0.95),
+        ("eth_addresses", "ETH_ADDRESS", "wallet_cluster_eth", 0.95),
+        ("xmr_addresses", "XMR_ADDRESS", "wallet_cluster_xmr", 0.50),
+        ("onion_services", "ONION_SERVICE", "web_server_fingerprint", 0.90),
+        ("emails", "EMAIL", "semantic_contact", 0.85),
+        ("handles", "HANDLE", "handle_alias", 0.80),
+    ]
+
+    rows: List[ExtractedEvidence] = []
+    for key, kind, group, confidence in PLAN:
+        for value in extracted.get(key, []) or []:
+            ev = Evidence(
+                id=uuidv7_str(),
+                artifact_id=artifact.id,
+                source_uri=artifact_meta.source_uri,
+                collector_version="netrax-ingest/0.1",
+                extraction_method=f"regex:{kind.lower()}",
+                value=str(value),
+                confidence=confidence,
+                dependence_group=group,
+                is_immutable=True,
+            )
+            db.add(ev)
+            rows.append(ExtractedEvidence(
+                id=ev.id, kind=kind, value=str(value),
+                dependence_group=group, confidence=confidence,
+            ))
+
+    append_audit_event(
+        session=db,
+        actor_user_id=user.id,
+        action="EVIDENCE_INGESTED",
+        resource_type="OBSERVATION",
+        resource_id=observation.id,
+        payload={
+            "sha256": artifact_meta.sha256,
+            "source": source.name,
+            "lawful_basis": source.lawful_basis,
+            "extracted": len(rows),
+            "xmr_abstain": bool(extracted.get("xmr_abstain")),
+        },
+    )
+    db.commit()
+
+    return IngestResponse(
+        observation_id=observation.id,
+        artifact_sha256=artifact_meta.sha256,
+        source_id=source.id,
+        lawful_basis=source.lawful_basis,
+        duplicate=False,
+        extracted_count=len(rows),
+        xmr_abstain=bool(extracted.get("xmr_abstain")),
+        evidence=rows,
+    )
+
+
 @app.get("/api/v1/evidence", response_model=List[EvidenceSchema])
 def list_evidence(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     items = db.query(Evidence).options(joinedload(Evidence.artifact)).all()
