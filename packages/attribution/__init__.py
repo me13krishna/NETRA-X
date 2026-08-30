@@ -16,6 +16,12 @@ from packages.attribution.financial import (
     build_utxo_clusters,
     evaluate_wallet_evidence,
 )
+from packages.attribution.reporting import (
+    AttributionReportFormatter,
+    build_waterfall_breakdown,
+    format_ascii_waterfall,
+    format_markdown_report,
+)
 
 __all__ = [
     "LLRFusionEngine",
@@ -33,6 +39,11 @@ __all__ = [
     "FinancialAttributionEvaluator",
     "build_utxo_clusters",
     "evaluate_wallet_evidence",
+    "AttributionReportFormatter",
+    "build_waterfall_breakdown",
+    "format_ascii_waterfall",
+    "format_markdown_report",
 ]
+
 
 

@@ -164,6 +164,21 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `python -m pytest tests/attribution/test_financial.py -v` → 3/3 passed
   - `python -m pytest tests/ -v` → 56/56 passed cleanly
 
+### [2026-08-30] Krishna — Automated Evidence Waterfall & Attribution Report Formatting (`packages/attribution/reporting.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Implemented `AttributionReportFormatter` to render step-by-step mathematical evidence waterfall breakdowns, CLI ASCII visual contribution diagrams, and GitHub-flavored Markdown reports.
+  - Generates JSON summary payloads for API response pipelines (`export_summary_json`).
+- **Files Touched**:
+  - `packages/attribution/reporting.py` [NEW] — `AttributionReportFormatter`, `build_waterfall_breakdown()`, `format_ascii_waterfall()`, `format_markdown_report()`, `export_summary_json()`
+  - `packages/attribution/__init__.py` — re-exported reporting symbols
+  - `tests/attribution/test_reporting.py` [NEW] — 5 unit tests covering waterfall accounting, ASCII chart rendering, Markdown output, and JSON export
+- **Verification**:
+  - `python -m pytest tests/attribution/test_reporting.py -v` → 5/5 passed
+  - `python -m pytest tests/ -v` → 61/61 passed cleanly
+
+
 
 
 
