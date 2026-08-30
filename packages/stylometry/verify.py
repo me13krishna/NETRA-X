@@ -82,13 +82,14 @@ def verify_author_stylometry(
 
 
     # Convert similarity metrics into probabilistic m_i and u_i parameters
-    # High cosine similarity / low delta distance -> strong match
-    if cos_sim > 0.85 or delta_dist < 0.05:
-        m_i, u_i = 0.90, 0.01
-    elif cos_sim > 0.65 or delta_dist < 0.15:
-        m_i, u_i = 0.75, 0.05
+    # High cosine similarity / low z-score delta distance -> same-author match
+    if cos_sim > 0.85 or delta_dist < 0.75:
+        m_i, u_i = 0.85, 0.02
+    elif cos_sim > 0.65 or delta_dist < 0.95:
+        m_i, u_i = 0.70, 0.05
     else:
         m_i, u_i = 0.20, 0.50
+
 
     return EvidenceItem(
         id=item_id,
