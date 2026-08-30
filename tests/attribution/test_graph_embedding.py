@@ -6,6 +6,13 @@ import math
 import numpy as np
 import pytest
 
+
+# torch is an optional [neural] extra. Without this guard the import below
+# raises during collection, which aborts the ENTIRE suite instead of
+# skipping these tests -- on a machine without torch the whole project
+# looks broken rather than one optional module being absent.
+pytest.importorskip("torch", reason="requires the [neural] extra: pip install -e .[neural]")
+
 from packages.attribution.graph_embedding import (
     Node2VecGraphEmbedder,
     LinkPredictor,
