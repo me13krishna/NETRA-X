@@ -222,3 +222,80 @@ def test_api_pdf_export(test_client):
     assert pdf_resp.status_code == 200
     assert pdf_resp.headers["content-type"] == "application/pdf"
     assert len(pdf_resp.content) > 1000
+
+
+def test_api_neural_stylometry_endpoint(test_client):
+    login_resp = test_client.post(
+        "/api/v1/auth/login",
+        json={"email": "analyst@netra-x.local", "password": "AnalystPass2026!"}
+    )
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = test_client.post(
+        "/api/v1/stylometry/neural?text_a=Checking+tor+hidden+service.&text_b=Checking+tor+hidden+service.",
+        headers=headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["family"] == "STYLOMETRY"
+    assert data["abstain"] is False
+
+
+def test_api_graph_predict_link_endpoint(test_client):
+    login_resp = test_client.post(
+        "/api/v1/auth/login",
+        json={"email": "analyst@netra-x.local", "password": "AnalystPass2026!"}
+    )
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = test_client.post(
+        "/api/v1/graph/predict-link?node_a=actor_nstar7&node_b=alias_shadowbyte",
+        headers=headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["family"] == "INFRASTRUCTURE"
+    assert "cosine_similarity" in data["metadata"]
+
+
+def test_api_financial_utxo_endpoint(test_client):
+    login_resp = test_client.post(
+        "/api/v1/auth/login",
+        json={"email": "analyst@netra-x.local", "password": "AnalystPass2026!"}
+    )
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    addr1 = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
+    addr2 = "132F25uv17spT6UXvuPvyVSp2wN7G4NKTq"
+    resp = test_client.post(
+        f"/api/v1/financial/utxo-clusters?address_a={addr1}&address_b={addr2}",
+        headers=headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "cluster_map" in data
+    assert data["evidence_item"]["family"] == "FINANCIAL"
+
+
+def test_api_attribution_waterfall_endpoint(test_client):
+    login_resp = test_client.post(
+        "/api/v1/auth/login",
+        json={"email": "analyst@netra-x.local", "password": "AnalystPass2026!"}
+    )
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = test_client.post(
+        "/api/v1/attribution/waterfall?target_actor=nstar_7&candidate_actor=ShadowByte",
+        headers=headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["decision"] == "HIGH_CONFIDENCE_LINK"
+    assert "waterfall_breakdown" in data
+    assert "ascii_diagram" in data
+    assert "markdown_report" in data
+

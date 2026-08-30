@@ -178,6 +178,25 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `python -m pytest tests/attribution/test_reporting.py -v` → 5/5 passed
   - `python -m pytest tests/ -v` → 61/61 passed cleanly
 
+### [2026-08-30] Krishna — REST API Integration of Advanced ML & Reporting Endpoints (`apps/api/main.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Added 4 authenticated REST API endpoints in `apps/api/main.py`:
+    1. `POST /api/v1/stylometry/neural`: Short-text PyTorch neural style vector verification (`verify_short_text_neural_stylometry`).
+    2. `POST /api/v1/graph/predict-link`: Node2Vec random-walk identity graph link prediction (`evaluate_graph_link`).
+    3. `POST /api/v1/financial/utxo-clusters`: Bitcoin UTXO co-spending clustering and wallet evidence evaluation (`build_utxo_clusters`, `evaluate_wallet_evidence`).
+    4. `POST /api/v1/attribution/waterfall`: Detailed evidence waterfall breakdown, ASCII chart, and Markdown report export (`AttributionReportFormatter`).
+  - Added `EvidenceItem.to_dict()` helper in `packages/common/types.py`.
+- **Files Touched**:
+  - `apps/api/main.py` — added 4 REST API endpoints (`/stylometry/neural`, `/graph/predict-link`, `/financial/utxo-clusters`, `/attribution/waterfall`)
+  - `packages/common/types.py` — added `EvidenceItem.to_dict()`
+  - `tests/test_backend.py` — added 4 endpoint unit test cases
+- **Verification**:
+  - `python -m pytest tests/test_backend.py -v` → 16/16 passed
+  - `python -m pytest tests/ -v` → 65/65 passed cleanly
+
+
 
 
 
