@@ -117,6 +117,26 @@ def on_startup():
     except Exception as e:
         print(f"[!] Database startup seed check: {e}")
 
+    # The hero scenario is two actors joined by one hypothesis. That is the
+    # right fixture for the acceptance test, but on a fresh deployment it is
+    # also the *entire* graph -- which is why the deployed map showed only
+    # ShadowByte and Vortex99. Seed the actor network as well.
+    #
+    # Deliberately a separate session and a separate try: seed_database()
+    # commits on its own session, so a session opened before it cannot see its
+    # rows, and a failure here must never stop the API from booting.
+    try:
+        from seed.network import already_seeded as network_seeded, build as build_network
+
+        session = SyncSessionLocal()
+        try:
+            if not network_seeded(session):
+                build_network(session)
+        finally:
+            session.close()
+    except Exception as e:
+        print(f"[!] Actor-network seed skipped: {e}")
+
 
 @app.get("/")
 def root():
