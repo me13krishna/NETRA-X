@@ -44,10 +44,11 @@ def verify_author_stylometry(
     ep1: StylometryEpisode,
     ep2: StylometryEpisode,
     item_id: str = "stylometry_verification_1",
+    background_std_devs: Optional[np.ndarray] = None,
 ) -> EvidenceItem:
     """
     Verifies same-author hypothesis across two StylometryEpisodes.
-    
+
     ENFORCES MANDATORY SHORT-TEXT ABSTENTION:
     If either episode has < 50 words (abstain=True), returns EvidenceItem with abstain=True and score=0.0.
     """
@@ -72,7 +73,8 @@ def verify_author_stylometry(
     fvec2 = ep2.feature_dict["function_word_vector"]
 
     cos_sim = compute_cosine_similarity(fvec1, fvec2)
-    delta_dist = compute_burrows_delta(fvec1, fvec2)
+    # Supplying corpus-level standard deviations produces the classic Burrows' Delta z-score version, which is preferred for small samples.
+    delta_dist = compute_burrows_delta(fvec1, fvec2, std_devs=background_std_devs)
 
     # Convert similarity metrics into probabilistic m_i and u_i parameters
     # High cosine similarity / low delta distance -> strong match
@@ -98,3 +100,4 @@ def verify_author_stylometry(
             "ep2_words": ep2.word_count,
         },
     )
+

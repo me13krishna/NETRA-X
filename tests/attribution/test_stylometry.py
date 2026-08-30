@@ -65,3 +65,22 @@ def test_long_text_same_author_verification():
     assert ev_item.family == EvidenceFamily.STYLOMETRY
     assert ev_item.abstain is False
     assert ev_item.get_effective_llr() > 0.0
+
+
+def test_background_std_devs_verification():
+    """
+    Test verify_author_stylometry passing background_std_devs for z-score Burrows' Delta computation.
+    """
+    import numpy as np
+
+    ep1 = StylometryEpisode.from_single_text("auth1", "ep1", SAMPLE_LONG_TEXT_1)
+    ep2 = StylometryEpisode.from_single_text("auth1", "ep2", SAMPLE_LONG_TEXT_2)
+
+    # Standard deviations for function word vector (length 172)
+    fvec_len = len(ep1.feature_dict["function_word_vector"])
+    dummy_std_devs = np.ones(fvec_len, dtype=np.float64) * 0.05
+
+    ev_item = verify_author_stylometry(ep1, ep2, item_id="test_zscore_ev", background_std_devs=dummy_std_devs)
+    assert ev_item.abstain is False
+    assert "burrows_delta" in ev_item.metadata
+

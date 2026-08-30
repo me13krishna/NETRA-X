@@ -148,3 +148,35 @@ def test_edge_case_pure_contradiction():
     assert out["contradiction_penalty"] == 20.0
     assert out["final_llr"] == -20.0
     assert out["decision"] == AttributionDecision.CONTRADICTION_REJECTED.value
+
+
+def test_candidate_generator_temporal_overlap_score():
+    """
+    Test CandidateGenerator.temporal_overlap_score with valid, invalid, overlapping, and distant timestamps.
+    """
+    from packages.attribution.candidate_gen import CandidateGenerator
+
+    # Case 1: Empty / invalid inputs
+    res_empty = CandidateGenerator.temporal_overlap_score([], [])
+    assert res_empty["overlap_detected"] is False
+    assert res_empty["min_proximity_minutes"] is None
+    assert res_empty["contradiction"] is False
+    assert res_empty["num_events_a"] == 0
+
+    # Case 2: Overlapping within 60 minutes
+    events_a = ["2026-08-20T10:00:00Z", "2026-08-20T12:00:00Z"]
+    events_b = ["2026-08-20T10:15:00Z"]  # 15 min gap
+    res_overlap = CandidateGenerator.temporal_overlap_score(events_a, events_b)
+    assert res_overlap["overlap_detected"] is True
+    assert res_overlap["min_proximity_minutes"] == 15.0
+    assert res_overlap["contradiction"] is False
+    assert res_overlap["num_events_a"] == 2
+    assert res_overlap["num_events_b"] == 1
+
+    # Case 3: Extreme gap > 30 days -> contradiction
+    events_distant = ["2026-10-01T10:00:00Z"]
+    res_contradiction = CandidateGenerator.temporal_overlap_score(events_a, events_distant)
+    assert res_contradiction["overlap_detected"] is False
+    assert res_contradiction["contradiction"] is True
+    assert res_contradiction["min_proximity_minutes"] > 40000
+

@@ -68,3 +68,19 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `tests/test_audit_chain_integrity.py` — new; 13 tests, 7 of which mutate stored rows and assert detection
 - **Verification**: 26/26 tests pass (13 pre-existing + 13 new). `netrax.db` reseeded — the added columns cannot be applied to an existing table by `create_all()`.
 - **Note for team**: `netrax.db` is committed and changes on every login as the audit chain appends, so it produces spurious diffs and merge conflicts. Recommend untracking it and relying on `python -m seed.generator`, which is deterministic.
+
+### [2026-08-30] Krishna — Phase 1 Ownership Final Hardening (Temporal + Stylometry)
+
+- **Author**: Krishna (`feature/ml-attribution`)
+- **Rationale**:
+  - Closed the two remaining minor gaps identified in the post-Phase-1 ownership audit.
+  - `CandidateGenerator.temporal_overlap_score()` was a static stub. Replaced with real pairwise timestamp delta logic that correctly computes min/mean proximity in minutes and overlap detection (≤ 60 min).
+  - `verify_author_stylometry` now optionally accepts and forwards `background_std_devs` to `compute_burrows_delta`, enabling classic Burrows’ Delta z-score standardization when a background corpus is available. Fallback behavior for small samples remains unchanged.
+  - No changes to public API contract, family caps, dependence discounting, or short-text abstention rule.
+- **Files Touched**:
+  - `packages/attribution/candidate_gen.py` — real temporal overlap implementation
+  - `packages/stylometry/verify.py` — optional background std_devs support for Burrows’ Delta
+- **Verification**:
+  - `python -m bench.report` → ECE = 0.0000, FAR = 0.00%, Brier ≈ 0.029, all targets passed
+  - `python -m pytest tests/ -v` → 39/39 passed
+- **Status**: Phase 1 ownership is now fully complete and hardened. Public API (`compute_attribution`) remains frozen and stable for Vivek.
