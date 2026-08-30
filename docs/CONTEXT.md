@@ -196,6 +196,23 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `python -m pytest tests/test_backend.py -v` → 16/16 passed
   - `python -m pytest tests/ -v` → 65/65 passed cleanly
 
+### [2026-08-30] Krishna — Pre-Trained Stylometric Background Corpus Statistics (`packages/stylometry/corpus_stats.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Implemented `BackgroundCorpusStats` and JSON asset `corpus_stats.json` containing reference means and standard deviations across 174 English function words from darknet forum samples.
+  - Updated `verify_author_stylometry()` in `packages/stylometry/verify.py` to auto-load `background_std_devs` by default for standardized z-score Burrows' Delta distance calculation.
+- **Files Touched**:
+  - `packages/stylometry/corpus_stats.json` [NEW] — pre-computed reference corpus statistics JSON
+  - `packages/stylometry/corpus_stats.py` [NEW] — `BackgroundCorpusStats`, `load_default()`, `compute_from_texts()`
+  - `packages/stylometry/verify.py` — auto-load default background std devs
+  - `packages/stylometry/__init__.py` — re-exported `BackgroundCorpusStats`
+  - `tests/stylometry/test_corpus_stats.py` [NEW] — 3 unit test cases
+- **Verification**:
+  - `python -m pytest tests/stylometry/test_corpus_stats.py -v` → 3/3 passed
+  - `python -m pytest tests/ -v` → 68/68 passed cleanly
+
+
 
 
 

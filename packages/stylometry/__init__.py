@@ -10,6 +10,7 @@ from packages.stylometry.verify import (
     compute_cosine_similarity,
 )
 from packages.stylometry.neural import NeuralStylometryEncoder, extract_neural_style_embedding
+from packages.stylometry.corpus_stats import BackgroundCorpusStats
 
 __all__ = [
     "extract_stylometric_features",
@@ -22,5 +23,7 @@ __all__ = [
     "compute_cosine_similarity",
     "NeuralStylometryEncoder",
     "extract_neural_style_embedding",
+    "BackgroundCorpusStats",
 ]
+
 

@@ -72,9 +72,14 @@ def verify_author_stylometry(
     fvec1 = ep1.feature_dict["function_word_vector"]
     fvec2 = ep2.feature_dict["function_word_vector"]
 
+    if background_std_devs is None:
+        from packages.stylometry.corpus_stats import BackgroundCorpusStats
+        background_std_devs = BackgroundCorpusStats.load_default().get_std_devs()
+
     cos_sim = compute_cosine_similarity(fvec1, fvec2)
     # Supplying corpus-level standard deviations produces the classic Burrows' Delta z-score version, which is preferred for small samples.
     delta_dist = compute_burrows_delta(fvec1, fvec2, std_devs=background_std_devs)
+
 
     # Convert similarity metrics into probabilistic m_i and u_i parameters
     # High cosine similarity / low delta distance -> strong match
