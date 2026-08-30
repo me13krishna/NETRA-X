@@ -101,3 +101,63 @@ def verify_author_stylometry(
         },
     )
 
+
+def verify_short_text_neural_stylometry(
+    ep1: StylometryEpisode,
+    ep2: StylometryEpisode,
+    item_id: str = "neural_stylometry_1",
+) -> EvidenceItem:
+    """
+    Phase 5 Neural Short-Text Stylometry Verifier.
+
+    Extracts 128d PyTorch subword embeddings for short-text episodes (<50 words)
+    and computes cosine similarity to produce a calibrated EvidenceItem.
+    """
+    from packages.stylometry.neural import extract_neural_style_embedding
+
+    text1 = " ".join(ep1.texts) if ep1.texts else ""
+    text2 = " ".join(ep2.texts) if ep2.texts else ""
+
+    if not text1.strip() or not text2.strip():
+        return EvidenceItem(
+            id=item_id,
+            feature_name="stylometry_neural_embedding",
+            family=EvidenceFamily.STYLOMETRY,
+            dependence_group="author_stylometry_neural",
+            m_i=0.80,
+            u_i=0.05,
+            llr=0.0,
+            abstain=True,
+            metadata={"reason": "Empty text observation"},
+        )
+
+    emb1 = extract_neural_style_embedding(text1)
+    emb2 = extract_neural_style_embedding(text2)
+
+    cos_sim = compute_cosine_similarity(emb1, emb2)
+
+    # Convert neural cosine similarity into likelihood ratio priors
+    if cos_sim > 0.85:
+        m_i, u_i = 0.85, 0.01
+    elif cos_sim > 0.65:
+        m_i, u_i = 0.70, 0.05
+    else:
+        m_i, u_i = 0.30, 0.40
+
+    return EvidenceItem(
+        id=item_id,
+        feature_name="stylometry_neural_embedding",
+        family=EvidenceFamily.STYLOMETRY,
+        dependence_group="author_stylometry_neural",
+        m_i=m_i,
+        u_i=u_i,
+        abstain=False,
+        metadata={
+            "neural_cosine_similarity": round(float(cos_sim), 4),
+            "ep1_words": ep1.word_count,
+            "ep2_words": ep2.word_count,
+            "embedding_dim": len(emb1),
+        },
+    )
+
+

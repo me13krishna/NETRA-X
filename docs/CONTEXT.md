@@ -84,3 +84,19 @@ It transforms fragmented dark-web and clearnet observations (onion services, for
   - `python -m bench.report` → ECE = 0.0000, FAR = 0.00%, Brier ≈ 0.029, all targets passed
   - `python -m pytest tests/ -v` → 39/39 passed
 - **Status**: Phase 1 ownership is now fully complete and hardened. Public API (`compute_attribution`) remains frozen and stable for Vivek.
+
+### [2026-08-30] Krishna — Neural Short-Text Stylometry Module (`packages/stylometry/neural.py`)
+
+- **Author**: Krishna (`feature/ml-attribution` / `Kris`)
+- **Rationale**:
+  - Traditional Burrows' Delta function-word analysis abstains on short text samples (<50 words).
+  - Built a PyTorch-backed 128-dimensional dense stylometric embedding encoder (`NeuralStylometryEncoder`) projecting character 3-5gram subword features into a normalized latent style space.
+  - Implemented `verify_short_text_neural_stylometry()` to produce calibrated `EvidenceItem` outputs under the `STYLOMETRY` family for short-text author leads without violating the Phase 1 Burrows' Delta abstention rule.
+- **Files Touched**:
+  - `packages/stylometry/neural.py` — PyTorch subword embedding encoder and `extract_neural_style_embedding()`
+  - `packages/stylometry/verify.py` — `verify_short_text_neural_stylometry()`
+  - `packages/stylometry/__init__.py` — re-exported neural symbols
+  - `tests/attribution/test_neural_stylometry.py` — unit tests for shape, L2 normalization, reproducibility, and short-text verification
+- **Verification**:
+  - `python -m pytest tests/attribution/test_neural_stylometry.py -v` → 4/4 passed
+  - `python -m pytest tests/ -v` → 45/45 passed cleanly
