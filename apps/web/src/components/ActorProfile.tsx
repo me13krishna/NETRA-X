@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useToast } from "./StatusToasts";
 import { apiFetch } from "../lib/api";
+import { CryptoUTXOVisualizer } from "./CryptoUTXOVisualizer";
 
 interface ActorProfileProps {
   actorId?: string;
@@ -209,22 +210,26 @@ export const ActorProfile: React.FC<ActorProfileProps> = ({
       )}
 
       {activeTab === "wallets" && (
-        <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-white border-b border-netra-border pb-2 flex items-center space-x-2">
-            <Wallet className="w-4 h-4 text-netra-cyan" />
-            <span>Cryptocurrency Wallet Clusters</span>
-          </h2>
-          <div className="space-y-3">
-            {actor.wallets.map((w: any) => (
-              <div key={w.id} className="p-3 bg-netra-surface border border-netra-border rounded flex justify-between items-center text-xs font-mono">
-                <div>
-                  <div className="text-netra-cyan font-bold">{w.address}</div>
-                  <div className="text-netra-subtle text-[11px]">Chain: {w.chain} • Cluster: {w.cluster_id}</div>
+        <div className="space-y-6">
+          <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4">
+            <h2 className="text-sm font-semibold text-white border-b border-netra-border pb-2 flex items-center space-x-2">
+              <Wallet className="w-4 h-4 text-netra-cyan" />
+              <span>Tracked Cryptocurrency Wallets</span>
+            </h2>
+            <div className="space-y-3">
+              {actor.wallets.map((w: any) => (
+                <div key={w.id} className="p-3 bg-netra-surface border border-netra-border rounded flex justify-between items-center text-xs font-mono">
+                  <div>
+                    <div className="text-netra-cyan font-bold">{w.address}</div>
+                    <div className="text-netra-subtle text-[11px]">Chain: {w.chain} • Cluster: {w.cluster_id}</div>
+                  </div>
+                  <span className="text-netra-valid">Co-Spending Linked</span>
                 </div>
-                <span className="text-netra-valid">Co-Spending Linked</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+
+          <CryptoUTXOVisualizer initialWallet={actor.wallets[0]?.address} />
         </div>
       )}
 
