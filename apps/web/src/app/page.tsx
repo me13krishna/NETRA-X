@@ -111,7 +111,9 @@ export default function Home() {
           onNavigate={handleNavigate}
         />
       )}
-      {currentView === "graph_explorer" && <GraphExplorer actorId={selectedTargetId} />}
+      {currentView === "graph_explorer" && (
+        <GraphExplorer actorId={selectedTargetId} onNavigate={handleNavigate} />
+      )}
       {currentView === "evidence_vault" && (
         <EvidenceVault onOpenIngestionModal={() => setIsIngestionModalOpen(true)} />
       )}

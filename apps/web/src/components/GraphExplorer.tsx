@@ -1,12 +1,17 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ListTree, Maximize2, ZoomIn, ZoomOut, Info } from "lucide-react";
+import {
+  ListTree, Maximize2, ZoomIn, ZoomOut, Info, Download, Filter,
+  Layers, ExternalLink, Copy, Check, RefreshCw, Zap
+} from "lucide-react";
 import cytoscape from "cytoscape";
 import { apiFetch } from "../lib/api";
+import { useToast } from "./StatusToasts";
 
 interface GraphExplorerProps {
   actorId?: string;
+  onNavigate?: (view: string, targetId?: string) => void;
 }
 
 interface InspectedNode {
@@ -14,62 +19,29 @@ interface InspectedNode {
   label: string;
   type: string;
   degree: number;
-  links: { label: string; confidence: number; peer: string }[];
+  detail?: string;
+  category?: string;
+  links: { label: string; confidence: number; peer: string; peerId?: string }[];
 }
 
-/*
-  Palette note. This component previously carried the pre-redesign purple/cyan
-  hexes (#5B18D6 / #8B2CFF / #19D9D0 / #10B981) hard-coded inside the Cytoscape
-  style array. The Tailwind token remap could not reach them -- they are raw
-  strings in a JS object, not class names -- so the canvas stayed on the
-  abandoned palette while every panel around it moved to Tactical Telemetry.
-  That mismatch, not the layout, was what made the graph read as broken.
-
-  Node identity is now carried by SHAPE, not hue, for two reasons: the system
-  permits exactly one accent colour, and shape survives colour-blindness and
-  greyscale printing where a hue key does not.
-*/
 const C_GROUND = "#0A0A0A";
 const C_PHOSPHOR = "#EAEAEA";
 
-/*
-  Everything previously sat at one contrast level -- thin grey outlines on a
-  near-black ground -- so nothing separated at a glance. Node surfaces are now
-  lifted well clear of the background, and role is carried by a small set of
-  purposeful colours taken from the tokens the design system already defines
-  for status readouts (amber = flagged, green = verified) rather than by
-  decorative hues.
-*/
 const C = {
   ground: "#0A0A0A",
-  hazard: "#E61919",       // the actor -- the subject
-  amber: "#F0A020",        // a shared identifier -- the finding
+  hazard: "#E61919",
+  amber: "#F0A020",
+  cyan: "#00F0FF",
+  purple: "#8B2CFF",
   phosphor: "#EAEAEA",
   rule: "#282828",
   edge: "#55535080",
   edgeLive: "#EAEAEA",
   muted: "#9A9A9A",
-  surface: "#2A2A2A",      // was #141414: nodes were nearly the ground colour
+  surface: "#2A2A2A",
   surfaceLift: "#343434",
 };
 
-const NODE_SHAPES: Record<string, string> = {
-  Actor: "hexagon",
-  Alias: "ellipse",
-  Account: "ellipse",
-  PGPKey: "diamond",
-  Wallet: "rectangle",
-  OnionService: "hexagon",
-  Server: "rectangle",
-};
-
-/*
-  Node glyphs. Cytoscape paints to canvas, so an icon font or a React component
-  is not an option -- the only thing it accepts is an image URL. These are
-  inlined as data URIs so they need no network round trip and cannot 404.
-  Stroke colour is baked in per icon: the Actor sits on a hazard-red fill and
-  therefore needs a dark glyph, everything else sits on the dark surface.
-*/
 const ico = (svg: string) =>
   "data:image/svg+xml;utf8," + encodeURIComponent(svg.replace(/\s+/g, " ").trim());
 
@@ -77,7 +49,6 @@ const glyph = (body: string, stroke: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 
 const ICON = {
-  // Crosshair: the subject under investigation.
   actor: ico(glyph('<circle cx="12" cy="12" r="7"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"/><circle cx="12" cy="12" r="2.1"/>', C_GROUND)),
   linkedActor: ico(glyph('<circle cx="12" cy="12" r="7"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"/><circle cx="12" cy="12" r="2.1"/>', "#E61919")),
   sharedHandle: ico(glyph('<circle cx="9" cy="8.5" r="3"/><circle cx="16" cy="15" r="3"/><path d="M4 19.5c0-2.6 2.2-4.4 5-4.4M11 5.5c2.8 0 5 1.8 5 4.4"/>', "#F0A020")),
@@ -89,23 +60,24 @@ const ICON = {
   server: ico(glyph('<rect x="3" y="4.4" width="18" height="6" rx="1.4"/><rect x="3" y="13.6" width="18" height="6" rx="1.4"/><path d="M6.4 7.4h.01M6.4 16.6h.01"/>', C_PHOSPHOR)),
 };
 
-export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
+export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId, onNavigate }) => {
+  const toast = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
-  // Monotonic request counter. A plain "disposed" boolean cannot tell an
-  // unmount apart from "a newer actor was selected while this fetch was in
-  // flight" -- and in the latter case the stale run would return early without
-  // ever clearing `loading`, leaving the overlay stuck over a blank canvas.
   const reqRef = useRef(0);
+
   const [selectedNode, setSelectedNode] = useState<InspectedNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ nodes: 0, edges: 0 });
   const [actors, setActors] = useState<any[]>([]);
-  // "" means the full map. The per-actor view is still reachable from the
-  // dropdown, but the map is the default because the product's claim is about
-  // links *between* personas, not about one persona's attachments.
   const [selectedId, setSelectedId] = useState<string>(actorId ?? "");
   const [query, setQuery] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  // Layout physics selector: cose (force-directed), concentric, circle, grid
+  const [layoutMode, setLayoutMode] = useState<"cose" | "concentric" | "circle" | "grid">("cose");
+  // Type Filter filter chips
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
 
   const inspect = useCallback((node: cytoscape.NodeSingular): InspectedNode => {
     const links = node
@@ -116,6 +88,7 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
           label: String(e.data("label") || "LINKED"),
           confidence: Number(e.data("confidence") ?? 0),
           peer: String(peer.data("label") || peer.id()),
+          peerId: peer.id(),
         };
       })
       .sort((a, b) => b.confidence - a.confidence);
@@ -124,6 +97,8 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
       id: node.id(),
       label: node.data("label"),
       type: node.data("type"),
+      detail: node.data("detail"),
+      category: node.data("category"),
       degree: node.degree(false),
       links,
     };
@@ -139,8 +114,7 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
         const list = await apiFetch<any[]>("/api/v1/actors");
         if (stale()) return;
         setActors(list);
-        // An empty selection means the full map. Falling back to list[0] here
-        // would silently turn the default view back into a single ego graph.
+
         const graphData = selectedId
           ? await apiFetch<any>(`/api/v1/actors/${selectedId}/graph`)
           : await apiFetch<any>("/api/v1/graph");
@@ -154,8 +128,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
               id: n.id,
               label: n.label,
               type: n.type,
-              // Carried so search can match a wallet's chain list or an actor's
-              // category, not just the visible label.
               sharedBy: n.shared_by ?? 0,
               detail: n.detail ?? "",
               category: n.category ?? "",
@@ -181,6 +153,52 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
         });
 
         if (cyRef.current) cyRef.current.destroy();
+
+        let chosenLayout: any = {
+          name: layoutMode,
+          animate: false,
+          padding: 60,
+        };
+
+        if (layoutMode === "cose") {
+          chosenLayout = {
+            name: "cose",
+            animate: false,
+            padding: 60,
+            nodeRepulsion: () => 22000,
+            idealEdgeLength: () => 110,
+            edgeElasticity: () => 80,
+            gravity: 28,
+            componentSpacing: 150,
+            nodeDimensionsIncludeLabels: true,
+            randomize: false,
+            numIter: 1600,
+          };
+        } else if (layoutMode === "concentric") {
+          chosenLayout = {
+            name: "concentric",
+            concentric: (n: any) => n.degree(),
+            levelWidth: () => 1,
+            minNodeSpacing: 78,
+            padding: 64,
+            avoidOverlap: true,
+            animate: false,
+          };
+        } else if (layoutMode === "circle") {
+          chosenLayout = {
+            name: "circle",
+            padding: 60,
+            avoidOverlap: true,
+            animate: false,
+          };
+        } else if (layoutMode === "grid") {
+          chosenLayout = {
+            name: "grid",
+            padding: 60,
+            avoidOverlap: true,
+            animate: false,
+          };
+        }
 
         const cy = cytoscape({
           container: containerRef.current,
@@ -210,8 +228,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 "text-margin-y": 9,
                 "text-max-width": "110px",
                 "text-wrap": "ellipsis",
-                // A hard plate behind the label so it stays legible when it
-                // crosses an edge -- the alternative is hiding labels entirely.
                 "text-background-color": C.ground,
                 "text-background-opacity": 0.85,
                 "text-background-padding": "3px",
@@ -219,7 +235,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 "transition-duration": 140,
               },
             },
-            // The subject of the investigation. Sole use of the accent colour.
             {
               selector: 'node[type = "Actor"]',
               style: {
@@ -238,8 +253,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 "text-margin-y": 12,
               },
             },
-            // A linked actor: same hexagon and glyph, outlined instead of filled,
-            // so the actor under investigation remains visually unambiguous.
             {
               selector: 'node[type = "LinkedActor"]',
               style: {
@@ -258,9 +271,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 "text-margin-y": 10,
               },
             },
-            // A handle or wallet cluster touched by more than one persona. This
-            // is the finding the whole system exists to surface, so it gets the
-            // accent outline and grows with the number of actors involved.
             {
               selector: 'node[type = "SharedHandle"]',
               style: {
@@ -295,7 +305,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 "text-margin-y": 10,
               },
             },
-            // Search hit.
             {
               selector: "node.match",
               style: {
@@ -326,15 +335,11 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
             {
               selector: "edge",
               style: {
-                // Was #11131D -- effectively invisible against the ground, which
-                // is why the graph read as unconnected dots.
                 "line-color": "#565452",
                 "target-arrow-color": "#565452",
                 "target-arrow-shape": "triangle",
                 "arrow-scale": 0.75,
                 "curve-style": "bezier",
-                // Edge weight carries confidence, per the roadmap: thickness is
-                // proportional to how much the link is actually supported.
                 width: "mapData(confidence, 0.4, 1, 1.5, 7)",
                 label: "",
                 "font-family": "JetBrains Mono, IBM Plex Mono, monospace",
@@ -347,8 +352,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 "transition-duration": 140,
               },
             },
-            // Focus states. Dimming the complement is what makes a dense graph
-            // readable -- highlighting alone just adds more to look at.
             { selector: ".dim", style: { opacity: 0.18 } },
             { selector: "node.quiet", style: { "text-opacity": 0 } },
             {
@@ -362,10 +365,6 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 "target-arrow-color": C.edgeLive,
                 "width": 4,
                 label: "data(label)",
-                // Deliberately NOT autorotate. Concentric radiates edges in every
-                // direction, so rotation left vertical labels reading sideways.
-                // Labels only appear on the focused edges, so the collisions
-                // autorotate was solving cannot occur anyway.
                 "z-index": 20,
               },
             },
@@ -374,40 +373,12 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
               style: { "border-color": C.hazard, "border-width": 3 },
             },
           ] as any,
-          layout: (selectedId
-            ? {
-                // Ego view: one actor ringed by its identifiers.
-                name: "concentric",
-                concentric: (n: any) => n.degree(),
-                levelWidth: () => 1,
-                minNodeSpacing: 78,
-                padding: 64,
-                avoidOverlap: true,
-                animate: false,
-              }
-            : {
-                // Full map: force-directed, because the shape of the web -- who
-                // clusters around which shared identifier -- is the finding.
-                name: "cose",
-                animate: false,
-                padding: 60,
-                nodeRepulsion: () => 22000,
-                idealEdgeLength: () => 110,
-                edgeElasticity: () => 80,
-                gravity: 28,
-                componentSpacing: 150,
-                nodeDimensionsIncludeLabels: true,
-                randomize: false,
-                numIter: 1600,
-              }) as any,
+          layout: chosenLayout,
         });
 
         cyRef.current = cy;
         cy.fit(undefined, 48);
 
-        // A canvas has no DOM to query, so end-to-end tooling has no way to
-        // address a node. Expose the instance so Playwright (and the console)
-        // can resolve positions instead of guessing at pixel coordinates.
         if (typeof window !== "undefined") {
           (window as unknown as Record<string, unknown>).__NETRA_CY__ = cy;
         }
@@ -426,10 +397,8 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
           else clearFocus();
         });
 
-        // Only name the actors and the shared identifiers until the analyst
-        // zooms in; 86 simultaneous labels is noise, not information.
         const applyLabelDensity = () => {
-          if (selectedId) return;                 // ego view is sparse enough
+          if (selectedId) return;
           const zoomed = cy.zoom() > 0.6;
           cy.nodes().forEach((n) => {
             const t = n.data("type");
@@ -452,16 +421,12 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
           }
         });
 
-        // Pointer affordance -- a canvas that does not change the cursor reads
-        // as a static image.
         const el = containerRef.current;
         cy.on("mouseover", "node", () => { if (el) el.style.cursor = "pointer"; });
         cy.on("mouseout", "node", () => { if (el) el.style.cursor = "default"; });
       } catch (err) {
         console.error("Failed loading graph", err);
       } finally {
-        // Clear the overlay whenever this is still the newest request, even if
-        // the build failed -- a stuck spinner hides the error.
         if (!stale()) setLoading(false);
       }
     }
@@ -474,11 +439,9 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
         cyRef.current = null;
       }
     };
-  }, [actorId, selectedId, inspect]);
+  }, [actorId, selectedId, layoutMode, inspect]);
 
-  // Search runs against the live graph rather than refetching: the map is the
-  // corpus, so finding a handle means locating it in place, not loading a new
-  // view. Empty query restores the full map.
+  // Apply node search filtering
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
@@ -501,6 +464,29 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
     cy.animate({ fit: { eles: keep, padding: 90 }, duration: 320 });
   }, [query, stats]);
 
+  // Apply Type Filter
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.nodes().removeClass("dim");
+    if (typeFilter === "ALL") return;
+
+    cy.nodes().forEach((n) => {
+      const t = n.data("type");
+      if (
+        (typeFilter === "ACTOR" && (t === "Actor" || t === "LinkedActor")) ||
+        (typeFilter === "PGP" && t === "PGPKey") ||
+        (typeFilter === "WALLET" && (t === "Wallet" || t === "SharedWallet")) ||
+        (typeFilter === "ONION" && t === "OnionService") ||
+        (typeFilter === "SHARED" && (t === "SharedHandle" || t === "SharedWallet"))
+      ) {
+        n.removeClass("dim");
+      } else {
+        n.addClass("dim");
+      }
+    });
+  }, [typeFilter]);
+
   const zoomBy = (factor: number) => {
     const cy = cyRef.current;
     if (!cy) return;
@@ -511,31 +497,89 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
     if (cyRef.current) cyRef.current.fit(undefined, 48);
   };
 
+  const handleExportPNG = () => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const png = cy.png({ bg: "#0A0A0A", full: true, scale: 2 });
+    const a = document.createElement("a");
+    a.href = png;
+    a.download = `netrax_intelligence_graph_${selectedId || "full"}.png`;
+    a.click();
+    toast.push("ok", "Graph Exported", "Saved high-resolution graph PNG image");
+  };
+
+  const handleCopyUUID = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopied(true);
+    toast.push("ok", "Copied to Clipboard", `UUID ${id} copied`);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const ctrl =
-    "p-2 border border-netra-border bg-netra-surface text-netra-muted hover:text-white hover:border-netra-purple transition-colors";
+    "p-2 border border-netra-border bg-netra-surface text-netra-muted hover:text-white hover:border-netra-cyan transition-colors";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 font-sans">
       {/* Header Toolbar */}
-      <div className="flex justify-between items-end border-b border-netra-border pb-3">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-netra-border pb-3 gap-3">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center space-x-2">
-            <ListTree className="w-5 h-5 text-netra-purple" />
+            <ListTree className="w-5 h-5 text-netra-cyan" />
             <span>Interactive Intelligence Knowledge Graph</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-netra-purple/20 text-netra-purple border border-netra-purple/40">
+              CYTOSCAPE.JS TOPOLOGY
+            </span>
           </h1>
-          <p className="text-xs text-netra-muted">
-            Cytoscape.js Property Graph Visualizer • Rebuildable from PostgreSQL Evidence Ledger
+          <p className="text-xs text-netra-muted mt-0.5">
+            Multi-Modal Threat Actor Entity Graph • Real-Time Heuristic Node Filtering & Physics Layouts
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Node Type Filter Chips */}
+          <div className="flex items-center space-x-1 bg-netra-surface p-1 rounded-lg border border-netra-border font-mono text-[10px]">
+            {[
+              { id: "ALL", label: "All" },
+              { id: "ACTOR", label: "Actors" },
+              { id: "PGP", label: "PGP Keys" },
+              { id: "WALLET", label: "Wallets" },
+              { id: "ONION", label: "Onions" },
+              { id: "SHARED", label: "Shared" },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setTypeFilter(f.id)}
+                className={`px-2 py-1 rounded transition ${
+                  typeFilter === f.id
+                    ? "bg-netra-cyan text-netra-bg font-bold"
+                    : "text-netra-subtle hover:text-white"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Layout Physics Switcher */}
+          <select
+            value={layoutMode}
+            onChange={(e: any) => setLayoutMode(e.target.value)}
+            className="bg-netra-surface border border-netra-border text-netra-text font-mono text-[11px] px-2 py-1.5 focus:border-netra-cyan outline-none rounded"
+          >
+            <option value="cose">Force-Directed (cose)</option>
+            <option value="concentric">Concentric Rings</option>
+            <option value="circle">Circular Topology</option>
+            <option value="grid">Grid Matrix</option>
+          </select>
+
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search handle, wallet, actor..."
+            placeholder="Search handle, wallet..."
             aria-label="Search the graph"
-            className="bg-netra-surface border border-netra-border text-netra-text font-mono text-[11px] px-2 py-1.5 w-[210px] placeholder:text-netra-subtle focus:border-netra-purple outline-none"
+            className="bg-netra-surface border border-netra-border text-netra-text font-mono text-[11px] px-2.5 py-1.5 w-[160px] placeholder:text-netra-subtle focus:border-netra-cyan outline-none rounded"
           />
+
           {actors.length > 1 && (
             <select
               value={selectedId}
@@ -545,7 +589,7 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 setLoading(true);
               }}
               aria-label="Actor under investigation"
-              className="bg-netra-surface border border-netra-border text-netra-text font-mono text-[11px] px-2 py-1.5 focus:border-netra-purple outline-none max-w-[230px]"
+              className="bg-netra-surface border border-netra-border text-netra-text font-mono text-[11px] px-2 py-1.5 focus:border-netra-cyan outline-none max-w-[180px] rounded"
             >
               <option value="">— Full network map —</option>
               {actors.map((a) => (
@@ -555,15 +599,17 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
               ))}
             </select>
           )}
-          <div className="font-mono text-[10px] uppercase tracking-telemetry text-netra-subtle text-right leading-relaxed">
-            <div>
-              <span className="text-netra-muted">{stats.nodes}</span> nodes
-            </div>
-            <div>
-              <span className="text-netra-muted">{stats.edges}</span> edges
-            </div>
-          </div>
-          <div className="flex">
+
+          <button
+            onClick={handleExportPNG}
+            className="px-3 py-1.5 rounded bg-netra-purple/20 border border-netra-purple/40 text-netra-purple hover:text-white text-xs font-mono transition flex items-center space-x-1"
+            title="Export Graph PNG Image"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export PNG</span>
+          </button>
+
+          <div className="flex rounded overflow-hidden">
             <button onClick={() => zoomBy(1.3)} className={ctrl} title="Zoom in" aria-label="Zoom in">
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
@@ -578,11 +624,12 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
       </div>
 
       {/* Main Canvas + Node Inspector Sidebar */}
-      <div className="grid grid-cols-5 gap-4 h-[calc(100vh-208px)] min-h-[640px]">
-        <div className="col-span-4 bg-netra-card border border-netra-border relative overflow-hidden glass-panel">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 h-[calc(100vh-215px)] min-h-[640px]">
+        <div className="md:col-span-4 bg-netra-card border border-netra-border rounded-xl relative overflow-hidden glass-panel">
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-netra-bg/80 z-20 text-xs font-mono text-netra-purple animate-pulse">
-              Rendering Topology Graph...
+            <div className="absolute inset-0 flex items-center justify-center bg-netra-bg/80 z-20 text-xs font-mono text-netra-cyan animate-pulse space-x-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-netra-cyan" />
+              <span>Rendering Interactive Topology Graph ({layoutMode.toUpperCase()})...</span>
             </div>
           )}
           <div
@@ -595,10 +642,9 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
             }}
           />
 
-          {/* Shape key. Identity is encoded by geometry, so the legend has to
-              show geometry -- a colour swatch key would be a lie here. */}
+          {/* Canvas Key Legend */}
           {!loading && (
-            <div className="absolute bottom-0 left-0 border-t border-r border-netra-border bg-netra-bg/95 px-3 py-2 font-mono text-[9px] uppercase tracking-telemetry text-netra-subtle flex items-center gap-x-4">
+            <div className="absolute bottom-0 left-0 border-t border-r border-netra-border bg-netra-bg/95 px-3 py-2 font-mono text-[9px] uppercase tracking-telemetry text-netra-subtle flex items-center gap-x-4 rounded-tr-lg">
               <span className="flex items-center gap-x-1.5">
                 <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
                   <polygon points="5.5,0 11,3 11,8 5.5,11 0,8 0,3" fill="#E61919" />
@@ -609,7 +655,7 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 <svg width="14" height="11" viewBox="0 0 14 11" aria-hidden="true">
                   <rect x="0.8" y="1.4" width="12.4" height="8.2" rx="2" fill="#343434" stroke="#F0A020" strokeWidth="1.8" />
                 </svg>
-                Shared identifier
+                Shared Cluster
               </span>
               <span className="flex items-center gap-x-1.5">
                 <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
@@ -629,68 +675,96 @@ export const GraphExplorer: React.FC<GraphExplorerProps> = ({ actorId }) => {
                 </svg>
                 Wallet
               </span>
-              <span className="text-netra-subtle/70">| edge weight = confidence</span>
+              <span className="text-netra-subtle/70">| {stats.nodes} Nodes • {stats.edges} Edges</span>
             </div>
           )}
         </div>
 
         {/* Node Inspector Panel */}
-        <div className="bg-netra-card border border-netra-border p-4 space-y-4 font-mono text-xs overflow-y-auto">
-          <h2 className="font-semibold text-white border-b border-netra-border pb-2 flex items-center space-x-2">
-            <Info className="w-4 h-4 text-netra-cyan" />
-            <span>Node Inspector</span>
-          </h2>
+        <div className="bg-netra-card border border-netra-border rounded-xl p-4 space-y-4 font-mono text-xs overflow-y-auto flex flex-col justify-between">
+          <div className="space-y-3">
+            <h2 className="font-semibold text-white border-b border-netra-border pb-2 flex items-center justify-between">
+              <span className="flex items-center space-x-2">
+                <Info className="w-4 h-4 text-netra-cyan" />
+                <span>Node Inspector</span>
+              </span>
+              {selectedNode && (
+                <button
+                  onClick={() => handleCopyUUID(selectedNode.id)}
+                  className="p-1 text-netra-subtle hover:text-white rounded hover:bg-netra-surface"
+                  title="Copy Node UUID"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-netra-valid" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </h2>
 
-          {selectedNode ? (
-            <div className="space-y-3">
-              <div>
-                <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">Node Type</span>
-                <div className="text-netra-purple font-bold">{selectedNode.type}</div>
-              </div>
+            {selectedNode ? (
+              <div className="space-y-3">
+                <div>
+                  <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">Node Type</span>
+                  <div className="text-netra-cyan font-bold">{selectedNode.type}</div>
+                </div>
 
-              <div>
-                <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">Label / Handle</span>
-                <div className="text-white font-bold break-all">{selectedNode.label}</div>
-              </div>
+                <div>
+                  <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">Label / Handle</span>
+                  <div className="text-white font-bold break-all text-xs">{selectedNode.label}</div>
+                </div>
 
-              <div>
-                <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">UUIDv7</span>
-                <div className="text-netra-muted text-[10px] break-all">{selectedNode.id}</div>
-              </div>
+                <div>
+                  <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">UUIDv7 Entity ID</span>
+                  <div className="text-netra-muted text-[10px] break-all">{selectedNode.id}</div>
+                </div>
 
-              <div className="pt-3 border-t border-netra-border">
-                <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">
-                  Linked Edges ({selectedNode.degree})
-                </span>
-                <div className="mt-2 space-y-2">
-                  {selectedNode.links.map((l, i) => (
-                    <div key={i} className="border-l border-netra-border pl-2">
-                      <div className="text-netra-text text-[10px] break-all">{l.peer}</div>
-                      <div className="flex items-center justify-between text-[9px] text-netra-subtle">
-                        <span className="uppercase">{l.label}</span>
-                        <span className="text-netra-valid">{(l.confidence * 100).toFixed(0)}%</span>
+                <div className="pt-2 border-t border-netra-border">
+                  <span className="text-netra-subtle uppercase tracking-telemetry text-[10px]">
+                    Linked Edges ({selectedNode.degree})
+                  </span>
+                  <div className="mt-2 space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {selectedNode.links.map((l, i) => (
+                      <div key={i} className="border-l-2 border-netra-cyan/60 pl-2 py-0.5 space-y-0.5">
+                        <div className="text-white text-[10px] font-semibold break-all">{l.peer}</div>
+                        <div className="flex items-center justify-between text-[9px] text-netra-subtle">
+                          <span className="uppercase text-netra-purple">{l.label}</span>
+                          <span className="text-netra-valid">{(l.confidence * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="h-[2px] bg-netra-border rounded">
+                          <div
+                            className="h-full bg-netra-cyan rounded"
+                            style={{ width: `${Math.max(2, l.confidence * 100)}%` }}
+                          />
+                        </div>
                       </div>
-                      {/* Bar restates the confidence the edge thickness encodes,
-                          so the value is never colour/width-only. */}
-                      <div className="mt-1 h-[2px] bg-netra-border">
-                        <div
-                          className="h-full bg-netra-purple"
-                          style={{ width: `${Math.max(2, l.confidence * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                  {selectedNode.links.length === 0 && (
-                    <div className="text-netra-subtle text-[10px]">No linked edges in this projection.</div>
-                  )}
+                    ))}
+                    {selectedNode.links.length === 0 && (
+                      <div className="text-netra-subtle text-[10px]">No linked edges in this projection.</div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="text-netra-subtle text-[11px] leading-relaxed">
-              Hover a node to isolate its neighbourhood. Click to inspect identity attributes,
-              cryptographic keys, wallet clusters, and the confidence behind each link.
-            </div>
+            ) : (
+              <div className="text-netra-subtle text-[11px] leading-relaxed space-y-2">
+                <p>
+                  Hover over any node to isolate its 1-hop neighborhood. Click a node to view attributes, PGP fingerprints, wallet co-spending clusters, and edge confidence.
+                </p>
+                <div className="p-2.5 rounded bg-netra-surface border border-netra-border text-[10px] space-y-1">
+                  <div className="text-white font-bold">Quick Controls:</div>
+                  <div>• Use top filter chips to isolate PGP or Wallets</div>
+                  <div>• Switch layout physics to Concentric or Circle</div>
+                  <div>• Export high-res PNG graph for evidence</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {selectedNode && onNavigate && (
+            <button
+              onClick={() => onNavigate("attribution_lab", selectedNode.id)}
+              className="w-full py-2 bg-netra-purple/20 hover:bg-netra-purple border border-netra-purple/40 text-netra-purple hover:text-white rounded text-xs font-bold transition flex items-center justify-center space-x-1.5"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Inspect in Attribution Lab</span>
+            </button>
           )}
         </div>
       </div>
