@@ -9,7 +9,7 @@ import os
 import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Query, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Response, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select, or_
@@ -1107,10 +1107,22 @@ def verify_audit_chain_endpoint(db: Session = Depends(get_db), current_user: Use
 
 
 # --- CONSTRAINED AI COPILOT ---
-@app.post("/api/v1/copilot/query")
-def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@app.api_route("/api/v1/copilot/query", methods=["GET", "POST"])
+def query_copilot(
+    query_text: Optional[str] = Query(None),
+    payload: Optional[Dict[str, Any]] = Body(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Constrained AI Investigation Assistant. Never makes primary linkage decisions."""
-    q_lower = query_text.lower()
+    # Extract query text from query params or JSON body payload
+    q_str = query_text
+    if not q_str and payload:
+        q_str = payload.get("query_text") or payload.get("query") or payload.get("prompt")
+    if not q_str:
+        q_str = "Explain threat actor linkage and evidence status"
+
+    q_lower = q_str.lower()
     evidence_items = db.query(Evidence).all()
     evidence_count = len(evidence_items)
     evidence_ids = [e.id for e in evidence_items[:5]]
@@ -1162,11 +1174,12 @@ def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db), c
         )
 
     return {
-        "query": query_text,
+        "query": q_str,
         "response": response_text,
         "referenced_evidence_ids": evidence_ids,
         "disclaimer": "AI outputs generate hypotheses only and do not constitute primary evidence or authoritative attribution."
     }
+
 
 
 

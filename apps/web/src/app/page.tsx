@@ -15,6 +15,7 @@ import { CopilotDrawer } from "../components/CopilotDrawer";
 import { CommandPalette } from "../components/CommandPalette";
 import { ToastProvider } from "../components/StatusToasts";
 import { ReportGeneratorModal } from "../components/ReportGeneratorModal";
+import { DarknetIngestionModal } from "../components/DarknetIngestionModal";
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -22,6 +23,7 @@ export default function Home() {
   const [selectedTargetId, setSelectedTargetId] = useState<string | undefined>(undefined);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isIngestionModalOpen, setIsIngestionModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,6 +84,7 @@ export default function Home() {
         onLogout={handleLogout}
         onOpenCopilot={() => setIsCopilotOpen(true)}
         onOpenReportModal={() => setIsReportModalOpen(true)}
+        onOpenIngestionModal={() => setIsIngestionModalOpen(true)}
       >
       {/* Keyed on the view id so the enter animation replays on every module
           change; without the key React reuses the node and nothing animates. */}
@@ -90,6 +93,7 @@ export default function Home() {
         <CommandCenter
           onNavigate={handleNavigate}
           onOpenReportModal={() => setIsReportModalOpen(true)}
+          onOpenIngestionModal={() => setIsIngestionModalOpen(true)}
         />
       )}
       {currentView === "cases" && <CasesView />}
@@ -108,7 +112,9 @@ export default function Home() {
         />
       )}
       {currentView === "graph_explorer" && <GraphExplorer actorId={selectedTargetId} />}
-      {currentView === "evidence_vault" && <EvidenceVault />}
+      {currentView === "evidence_vault" && (
+        <EvidenceVault onOpenIngestionModal={() => setIsIngestionModalOpen(true)} />
+      )}
       {currentView === "audit_log" && <AuditLogViewer />}
 
       </div>
@@ -118,6 +124,11 @@ export default function Home() {
           isOpen={isReportModalOpen}
           onClose={() => setIsReportModalOpen(false)}
           initialHypothesisId={selectedTargetId}
+        />
+        <DarknetIngestionModal
+          isOpen={isIngestionModalOpen}
+          onClose={() => setIsIngestionModalOpen(false)}
+          onNavigate={handleNavigate}
         />
       </AppShell>
     </ToastProvider>
