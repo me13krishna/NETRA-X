@@ -466,6 +466,26 @@ def get_evidence_item(id: str, db: Session = Depends(get_db), user: User = Depen
     )
 
 
+@app.delete("/api/v1/evidence/{id}")
+def delete_evidence_item(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    e = db.query(Evidence).filter_by(id=id).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Evidence item not found")
+    
+    db.delete(e)
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="EVIDENCE_DELETED",
+        resource_type="EVIDENCE",
+        resource_id=id,
+        payload={"id": id}
+    )
+    db.commit()
+    return {"status": "success", "message": f"Evidence {id} deleted successfully"}
+
+
+
 # --- HYPOTHESES & ATTRIBUTION ENDPOINTS ---
 @app.get("/api/v1/hypotheses", response_model=List[HypothesisSchema])
 def list_hypotheses(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -726,6 +746,48 @@ def create_case(req: CaseCreate, db: Session = Depends(get_db), current_user: Us
         created_at=new_case.created_at,
         member_count=1
     )
+
+
+@app.delete("/api/v1/investigations/{id}")
+def delete_case(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    c = db.query(Case).filter_by(id=id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Delete case members first
+    db.query(CaseMember).filter_by(case_id=id).delete()
+    db.delete(c)
+    
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="CASE_DELETED",
+        resource_type="CASE",
+        resource_id=id,
+        payload={"id": id}
+    )
+    db.commit()
+    return {"status": "success", "message": f"Case {id} deleted successfully"}
+
+
+@app.patch("/api/v1/investigations/{id}/archive")
+def archive_case(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    c = db.query(Case).filter_by(id=id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    c.status = "ARCHIVED"
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="CASE_ARCHIVED",
+        resource_type="CASE",
+        resource_id=id,
+        payload={"id": id}
+    )
+    db.commit()
+    return {"status": "success", "message": f"Case {id} archived successfully", "status_code": "ARCHIVED"}
+
 
 
 # --- SEARCH ---

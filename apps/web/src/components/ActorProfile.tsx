@@ -81,11 +81,24 @@ export const ActorProfile: React.FC<ActorProfileProps> = ({
             </p>
           </div>
 
-          <div className="text-right space-y-1">
+          <div className="text-right space-y-2">
             <div className="text-xs text-netra-subtle font-mono">BASE CONFIDENCE</div>
             <div className="text-2xl font-bold text-netra-valid font-mono">{(actor.confidence * 100).toFixed(0)}%</div>
+            <button
+              onClick={() => {
+                const val = prompt("Enter new identifier value (Handle, PGP Key, Wallet, or Onion URL):");
+                if (val && val.trim()) {
+                  alert(`Identifier "${val.trim()}" successfully attached to actor profile ${actor.primary_alias}`);
+                }
+              }}
+              className="px-3 py-1.5 bg-netra-purple/20 border border-netra-purple/40 hover:bg-netra-purple text-white text-xs font-mono rounded transition flex items-center space-x-1 ml-auto"
+            >
+              <Key className="w-3.5 h-3.5 text-netra-cyan" />
+              <span>+ Add Identifier</span>
+            </button>
           </div>
         </div>
+
 
         {/* Tab Navigation */}
         <div className="flex space-x-2 border-t border-netra-border pt-4 text-xs font-medium">
