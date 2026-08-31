@@ -59,11 +59,9 @@ netrax.db
 *.sqlite
 *.sqlite3
 
-# Tor hidden-service keys
-testbed/**/hidden_service/
-testbed/**/tor-data/
-test-onion-service/hidden_service/
-test-onion-service/tor-data/
+# Tor testbed and onion services
+testbed/
+test-onion-service/
 
 # Logs & temp files
 *.log
