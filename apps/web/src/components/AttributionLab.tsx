@@ -20,6 +20,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
 }) => {
   const toast = useToast();
   const [hypothesis, setHypothesis] = useState<any>(null);
+  const [engineConfig, setEngineConfig] = useState<any>(null);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -35,7 +36,16 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
         console.error("Failed loading hypothesis", err);
       }
     }
+    async function loadEngineConfig() {
+      try {
+        const cfg = await apiFetch<any>("/api/v1/config/engine");
+        setEngineConfig(cfg);
+      } catch (err) {
+        console.error("Failed loading engine config", err);
+      }
+    }
     loadHypothesis();
+    loadEngineConfig();
   }, [hypothesisId]);
 
   if (!hypothesis) {
@@ -78,12 +88,8 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
     window.open(`/api/v1/exports/csv?hypothesis_id=${hypothesis.id}`, "_blank");
   };
 
-  const familyCaps: Record<string, number> = {
-    "Exact Identity": 10.0,
-    "Financial": 7.5,
-    "Infrastructure": 5.0,
-    "Stylometry": 3.0,
-  };
+  const lambdaDisplay = engineConfig ? engineConfig.lambda_discount.toFixed(2) : "…";
+  const storageBackend = engineConfig ? engineConfig.storage_backend : "Evidence Ledger";
 
   return (
     <div className="space-y-6">
@@ -108,7 +114,7 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
             <span>Bayesian Attribution Intelligence Lab</span>
           </h1>
           <p className="text-xs text-netra-muted mt-0.5">
-            Log-Likelihood Ratio Fusion, Dependence Discounting (lambda = 0.25) & Isotonic Calibration
+            Log-Likelihood Ratio Fusion, Dependence Discounting (λ = {lambdaDisplay}) & Isotonic Calibration
           </p>
         </div>
 
@@ -197,13 +203,14 @@ export const AttributionLab: React.FC<AttributionLabProps> = ({
           <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-white border-b border-netra-border pb-2 flex items-center justify-between">
               <span>Authoritative Evidence Waterfall</span>
-              <span className="text-xs text-netra-subtle font-mono">DISCOUNT FACTOR  lambda = 0.25</span>
+              <span className="text-xs text-netra-subtle font-mono">DISCOUNT FACTOR  λ = {lambdaDisplay}</span>
             </h2>
 
             <EvidenceWaterfall
               supporting={hypothesis.supporting_evidence}
               contradictions={hypothesis.contradictions}
               familyBreakdown={hypothesis.family_breakdown}
+              storageBackend={storageBackend}
             />
           </div>
         </div>

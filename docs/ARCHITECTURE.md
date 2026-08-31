@@ -1,7 +1,8 @@
 # ARCHITECTURE.md — NETRA-X Technical & Methodological Architecture
 
 > **SEE BEYOND. UNMASK THE REAL.**  
-> *Authorized Research / Law-Enforcement Oriented / Defensive Use Only*
+> *Authorized Research / Law-Enforcement Oriented / Defensive Use Only*  
+> Built for **Smart India Hackathon 2026 — Problem Statement SIH26151** (NTRO).
 
 ---
 
@@ -55,8 +56,8 @@
 
 ## ⚙️ Key Technical Design Decisions
 
-### 1. PostgreSQL as Single Source of Truth
-PostgreSQL 16 is the sole authoritative system of record. All artifacts, extracted evidence items, hypotheses, analyst reviews, and audit logs reside in Postgres. Neo4j graph projections and OpenSearch/pgvector indices are derived and must be 100% rebuildable from Postgres.
+### 1. Database as Single Source of Truth
+PostgreSQL 16 (with SQLite standalone development fallback) is the sole authoritative system of record. All artifacts, extracted evidence items, hypotheses, analyst reviews, and audit logs reside in the relational ledger. Neo4j graph projections are derived and 100% rebuildable.
 
 ### 2. Bayesian Log-Likelihood Ratio (LLR) Evidence Fusion
 Evidence items are scored using item LLR:

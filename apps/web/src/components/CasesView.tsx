@@ -58,8 +58,10 @@ export const CasesView: React.FC = () => {
       await apiFetch(`/api/v1/investigations/${caseId}`, { method: "DELETE" });
       setCases((prev) => prev.filter((c) => c.id !== caseId));
     } catch (err: any) {
-      // Fallback local removal
-      setCases((prev) => prev.filter((c) => c.id !== caseId));
+      // The row used to be dropped from the table here regardless, so a
+      // rejected delete looked identical to a successful one until refresh.
+      toast.push("error", "Could not delete investigation",
+                 err?.message ?? "The case is unchanged.");
     }
   };
 
@@ -70,17 +72,31 @@ export const CasesView: React.FC = () => {
         prev.map((c) => (c.id === caseId ? { ...c, status: "ARCHIVED" } : c))
       );
     } catch (err: any) {
-      setCases((prev) =>
-        prev.map((c) => (c.id === caseId ? { ...c, status: "ARCHIVED" } : c))
-      );
+      toast.push("error", "Could not archive investigation",
+                 err?.message ?? "The case is unchanged.");
     }
   };
 
-  const handleAddIdentifier = () => {
-    if (!idValue.trim()) return;
-    toast.push("ok", `${idType.toUpperCase()} identifier added`, `${idValue} -> case ${selectedCaseId?.substring(0, 8)}`);
-    setShowIdentifierModal(false);
-    setIdValue("");
+  /**
+   * This raised a success toast and called nothing -- the identifier was never
+   * sent, never stored, and gone on the next render, while the toast claimed
+   * it had been added. It now posts to the case and reports real failures.
+   */
+  const handleAddIdentifier = async () => {
+    if (!idValue.trim() || !selectedCaseId) return;
+    try {
+      await apiFetch(`/api/v1/investigations/${selectedCaseId}/identifiers`, {
+        method: "POST",
+        body: JSON.stringify({ id_type: idType, value: idValue.trim() }),
+      });
+      toast.push("ok", `${idType.toUpperCase()} identifier added`,
+                 `${idValue.trim()} -> case ${selectedCaseId.substring(0, 8)}`);
+      setShowIdentifierModal(false);
+      setIdValue("");
+    } catch (err: any) {
+      toast.push("error", "Could not add identifier",
+                 err?.message ?? "The identifier was not saved.");
+    }
   };
 
 

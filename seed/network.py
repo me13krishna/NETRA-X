@@ -18,6 +18,7 @@ every machine and screenshots stay comparable.
     python -m seed.network --reset  # drop it and rebuild
 """
 
+import hashlib
 import random
 import sys
 from datetime import datetime, timedelta
@@ -27,6 +28,7 @@ from packages.graph.projection import GraphProjectionService
 from apps.api.database.session import SyncSessionLocal, init_db_sync
 from apps.api.database.models import (
     Actor, Alias, Account, PGPKey, Wallet, OnionService, Server, Hypothesis,
+    HypothesisEvidence, Evidence, Artifact, Source, Observation,
 )
 
 RNG_SEED = 26151          # SIH problem statement number, for luck
@@ -79,29 +81,70 @@ SHARED_HANDLES = [
     ("ghostpay_ru", ["ObolBroker", "GlassRelay", "IronVesper"]),
 ]
 
-# (subject alias, object alias, calibrated probability, status)
-# Intra-cluster links are strong; the two cross-cluster links are deliberately
-# weak, so the review queue has something genuinely ambiguous in it.
-HYPOTHESES = [
-    ("NightHalo",   "LockJaw",     0.94, "ACCEPTED"),
-    ("NightHalo",   "PaleCipher",  0.88, "ACCEPTED"),
-    ("LockJaw",     "PaleCipher",  0.71, "PROPOSED"),
+# (subject alias, object alias, [feature names], [contradiction names])
+#
+# These are the *observations* behind each link, not the answer. The previous
+# version listed a hand-picked calibrated probability per pair and then
+# back-solved raw_log_lr by inverting the sigmoid, so every number in the demo
+# was a literal wearing the costume of a computed score -- the waterfall had
+# nothing to draw, and the review queue asked analysts to adjudicate figures no
+# engine had produced.
+#
+# Now the seed states which features were observed and the real fusion engine
+# decides what that is worth. Change a cap or a prior and these scores move.
+LINK_EVIDENCE = [
+    # (subject, object, observed features, contradictions, abstained features)
+    #
+    # Strong links: an exact identity match or independent infrastructure and
+    # financial reuse. These clear the 0.85 band on their own evidence.
+    ("NightHalo",   "LockJaw",
+     ["pgp_fingerprint_exact", "btc_co_input_clustering", "stylometry_burrows_delta"], [], []),
+    ("VelvetForge", "AtlasKilo",
+     ["ssh_host_key_fingerprint", "favicon_mmh3_hash", "simhash_clone_95",
+      "btc_co_input_clustering"], [], []),
+    ("ObolBroker",  "TumblerFox",
+     ["btc_co_input_clustering", "btc_address_reuse", "handle_trigram_fuzzy"], [], []),
+    ("GlassRelay",  "SableIndex",
+     ["favicon_mmh3_hash", "stylometry_burrows_delta"], [], []),
+    ("NightHalo",   "PaleCipher",
+     ["favicon_mmh3_hash", "temporal_diurnal_fit"], [], []),
 
-    ("VelvetForge", "AtlasKilo",   0.96, "ACCEPTED"),
-    ("VelvetForge", "RedMeridian", 0.83, "PROPOSED"),
-    ("AtlasKilo",   "RedMeridian", 0.62, "PROPOSED"),
+    # Ambiguous links: one weak family carries them, so they land in the
+    # 0.50-0.85 band and stay in the review queue. This is the interesting
+    # case -- a demo where everything is certain proves nothing.
+    ("LockJaw",     "PaleCipher",
+     ["stylometry_burrows_delta"], [], ["temporal_diurnal_fit"]),
+    ("AtlasKilo",   "RedMeridian",
+     ["stylometry_burrows_delta"], [], []),
+    ("PaleCipher",  "ObolBroker",
+     ["stylometry_burrows_delta"], [], ["btc_address_reuse"]),
+    ("VelvetForge", "RedMeridian",
+     ["handle_trigram_fuzzy"], [], ["stylometry_burrows_delta"]),
+    ("GlassRelay",  "QuietLedger",
+     ["handle_trigram_fuzzy"], [], []),
 
-    ("ObolBroker",  "TumblerFox",  0.91, "ACCEPTED"),
+    # Below threshold: the engine declines to link these at all.
+    ("SableIndex",  "QuietLedger",
+     ["temporal_diurnal_fit"], [], ["stylometry_burrows_delta"]),
+    ("RedMeridian", "TumblerFox",
+     ["temporal_diurnal_fit"], [], []),
 
-    ("GlassRelay",  "SableIndex",  0.89, "ACCEPTED"),
-    ("GlassRelay",  "QuietLedger", 0.77, "PROPOSED"),
-    ("SableIndex",  "QuietLedger", 0.55, "PROPOSED"),
-
-    # The interesting ones: weak bridges between clusters.
-    ("PaleCipher",  "ObolBroker",  0.48, "PROPOSED"),
-    ("RedMeridian", "TumblerFox",  0.41, "PROPOSED"),
-    ("QuietLedger", "IronVesper",  0.38, "INSUFFICIENT"),
+    # A hard contradiction: two conflicting PGP keys published for the same
+    # profile. The penalty is uncapped, so this goes negative however much
+    # circumstantial evidence supports it -- the property that stops the
+    # system talking itself into a wrong identification.
+    ("QuietLedger", "IronVesper",
+     ["handle_trigram_fuzzy", "stylometry_burrows_delta"], ["pgp_key_conflict"], []),
 ]
+
+
+# The engine speaks in decisions; the ledger stores review statuses.
+DECISION_TO_STATUS = {
+    "HIGH_CONFIDENCE_LINK": "ACCEPTED",
+    "LOW_CONFIDENCE_LINK": "PROPOSED",
+    "INSUFFICIENT_EVIDENCE": "INSUFFICIENT",
+    "CONTRADICTION_REJECTED": "INSUFFICIENT",
+}
 
 
 def _b58(rng, n):
@@ -121,23 +164,60 @@ def already_seeded(session):
 
 
 def reset(session):
-    """Remove only what this module created. The hero scenario is left alone."""
+    """Remove only what this module created. The hero scenario is left alone.
+
+    This deleted actors and hypotheses but not the evidence rows behind them,
+    which was harmless while the seed wrote no evidence. Now that it writes
+    Source/Artifact/Observation/Evidence per link, a partial run left orphaned
+    artifacts whose sha256 collided on the next attempt -- so the seed could
+    fail once and then never succeed again. Cleanup has to cover everything
+    the build writes.
+    """
+    removed_actors = 0
     names = [a[1] for a in ACTORS]
     actors = session.query(Actor).filter(Actor.primary_alias.in_(names)).all()
     ids = [a.id for a in actors]
-    if not ids:
-        print("[!] Nothing to reset.")
-        return
-    session.query(Hypothesis).filter(
-        Hypothesis.subject_entity_id.in_(ids) | Hypothesis.object_entity_id.in_(ids)
-    ).delete(synchronize_session=False)
-    for model in (Alias, Account, PGPKey, Wallet):
-        session.query(model).filter(model.actor_id.in_(ids)).delete(synchronize_session=False)
-    session.query(OnionService).filter(OnionService.title.like(f"%{MARK}%")).delete(synchronize_session=False)
-    session.query(Server).filter(Server.provider.like(f"%{MARK}%")).delete(synchronize_session=False)
-    session.query(Actor).filter(Actor.id.in_(ids)).delete(synchronize_session=False)
+
+    if ids:
+        hyp_ids = [h.id for h in session.query(Hypothesis).filter(
+            Hypothesis.subject_entity_id.in_(ids) | Hypothesis.object_entity_id.in_(ids)
+        ).all()]
+        if hyp_ids:
+            session.query(HypothesisEvidence).filter(
+                HypothesisEvidence.hypothesis_id.in_(hyp_ids)
+            ).delete(synchronize_session=False)
+            session.query(Hypothesis).filter(
+                Hypothesis.id.in_(hyp_ids)).delete(synchronize_session=False)
+        for model in (Alias, Account, PGPKey, Wallet):
+            session.query(model).filter(model.actor_id.in_(ids)).delete(synchronize_session=False)
+        session.query(Actor).filter(Actor.id.in_(ids)).delete(synchronize_session=False)
+        removed_actors = len(ids)
+
+    session.query(OnionService).filter(
+        OnionService.title.like(f"%{MARK}%")).delete(synchronize_session=False)
+    session.query(Server).filter(
+        Server.provider.like(f"%{MARK}%")).delete(synchronize_session=False)
+
+    # Evidence chain, keyed by the URI prefix this module owns.
+    prefix = "netra-x://seed/network%"
+    session.query(Evidence).filter(
+        Evidence.source_uri.like(prefix)).delete(synchronize_session=False)
+    artifacts = session.query(Artifact).filter(Artifact.storage_uri.like(prefix)).all()
+    art_hashes = [a.sha256 for a in artifacts]
+    if art_hashes:
+        session.query(Observation).filter(
+            Observation.content_hash.in_(art_hashes)).delete(synchronize_session=False)
+    session.query(Artifact).filter(
+        Artifact.storage_uri.like(prefix)).delete(synchronize_session=False)
+    session.query(Source).filter(
+        Source.base_uri.like(prefix)).delete(synchronize_session=False)
+
     session.commit()
-    print(f"[+] Removed {len(ids)} synthetic network actors and their identifiers.")
+    if removed_actors:
+        print(f"[+] Removed {removed_actors} synthetic network actors, their identifiers "
+              f"and {len(artifacts)} evidence artifacts.")
+    else:
+        print(f"[+] No seed actors present; cleared {len(artifacts)} orphaned artifacts.")
 
 
 def build(session):
@@ -248,29 +328,176 @@ def build(session):
             provider=f"{rng.choice(PROVIDERS)} [{MARK}]",
         ))
 
-    # Actor-to-actor attribution links.
-    print(f"[+] Linking actors with {len(HYPOTHESES)} attribution hypotheses...")
-    import math
-    for subj, obj, prob, status in HYPOTHESES:
+    # Actor-to-actor attribution links, scored by the real engine.
+    print(f"[+] Scoring {len(LINK_EVIDENCE)} links through the fusion engine...")
+
+    from packages.attribution.decide import evaluate_attribution
+    from packages.attribution.fusion import load_mu_table
+    from packages.common.types import EvidenceItem, EvidenceFamily
+
+    mu = load_mu_table()
+    features = mu.get("features", {})
+    contradiction_defs = mu.get("contradictions", {})
+
+    # One source and artifact per link, so every evidence row has a real
+    # provenance chain: Source -> Artifact(sha256) -> Evidence.
+    seed_source = Source(
+        id=uuidv7_str(),
+        name=f"NETRA-X synthetic network seed [{MARK}]",
+        source_type="SYNTHETIC",
+        lawful_basis="synthetic_seed",
+        base_uri="netra-x://seed/network",
+        is_active=True,
+    )
+    session.add(seed_source)
+
+    for subj, obj, feature_names, contradiction_names, abstained_names in LINK_EVIDENCE:
         if subj not in by_alias or obj not in by_alias:
             continue
-        # Invert the sigmoid so raw_log_lr and calibrated_prob stay consistent
-        # with what the engine would have produced (prior log-odds -2.0).
-        llr = round(math.log(prob / (1 - prob)) + 2.0, 2)
-        session.add(Hypothesis(
+
+        payload = f"{subj}::{obj}::{','.join(feature_names)}".encode()
+        artifact = Artifact(
             id=uuidv7_str(),
+            sha256=hashlib.sha256(payload).hexdigest(),
+            storage_uri=f"netra-x://seed/network/{subj}-{obj}",
+            content_type="application/json",
+            size=len(payload),
+        )
+        session.add(artifact)
+
+        observation = Observation(
+            id=uuidv7_str(),
+            source_id=seed_source.id,
+            raw_content=payload.decode(),
+            content_hash=artifact.sha256,
+        )
+        session.add(observation)
+
+        items, ev_rows = [], []
+        for name in feature_names:
+            spec = features.get(name)
+            if spec is None:
+                continue
+            item_id = uuidv7_str()
+            items.append(EvidenceItem(
+                id=item_id,
+                feature_name=name,
+                family=EvidenceFamily(spec["family"]),
+                dependence_group=spec["dependence_group"],
+                m_i=spec["m_i"],
+                u_i=spec["u_i"],
+            ))
+            ev_rows.append(Evidence(
+                id=item_id,
+                artifact_id=artifact.id,
+                source_uri=f"netra-x://seed/network/{subj}-{obj}",
+                collector_version="seed-network-1.0",
+                extraction_method=name,
+                value=f"{spec.get('description', name)} :: {subj} <-> {obj}",
+                confidence=1.0,
+                dependence_group=spec["dependence_group"],
+                created_at=BASE - timedelta(days=rng.randint(1, 60)),
+            ))
+
+        for name in contradiction_names:
+            spec = contradiction_defs.get(name)
+            if spec is None:
+                continue
+            item_id = uuidv7_str()
+            items.append(EvidenceItem(
+                id=item_id,
+                feature_name=name,
+                family=EvidenceFamily.EXACT_IDENTITY,
+                dependence_group=f"contradiction_{name}",
+                is_contradiction=True,
+                contradiction_weight=spec["contradiction_weight"],
+            ))
+            ev_rows.append(Evidence(
+                id=item_id,
+                artifact_id=artifact.id,
+                source_uri=f"netra-x://seed/network/{subj}-{obj}",
+                collector_version="seed-network-1.0",
+                extraction_method=name,
+                value=f"{spec.get('description', name)} :: {subj} <-> {obj}",
+                confidence=1.0,
+                dependence_group=f"contradiction_{name}",
+                created_at=BASE - timedelta(days=rng.randint(1, 60)),
+            ))
+
+        # Abstentions are recorded, not silently dropped. A stylometry sample
+        # under the minimum word count contributes exactly zero, and the
+        # waterfall shows it as abstained rather than omitting it -- an analyst
+        # needs to see that the test ran and declined to answer.
+        for name in abstained_names:
+            spec = features.get(name)
+            if spec is None:
+                continue
+            item_id = uuidv7_str()
+            items.append(EvidenceItem(
+                id=item_id,
+                feature_name=name,
+                family=EvidenceFamily(spec["family"]),
+                dependence_group=spec["dependence_group"],
+                m_i=spec["m_i"],
+                u_i=spec["u_i"],
+                abstain=True,
+            ))
+            ev_rows.append(Evidence(
+                id=item_id,
+                artifact_id=artifact.id,
+                source_uri=f"netra-x://seed/network/{subj}-{obj}",
+                collector_version="seed-network-1.0",
+                extraction_method=name,
+                value=f"ABSTAINED (insufficient sample) :: {subj} <-> {obj}",
+                confidence=0.0,
+                dependence_group=spec["dependence_group"],
+                created_at=BASE - timedelta(days=rng.randint(1, 60)),
+            ))
+
+        if not items:
+            continue
+        for row in ev_rows:
+            session.add(row)
+
+        result = evaluate_attribution(items)
+
+        hyp_id = uuidv7_str()
+        session.add(Hypothesis(
+            id=hyp_id,
             subject_entity_id=by_alias[subj][0],
             object_entity_id=by_alias[obj][0],
-            raw_log_lr=llr,
-            calibrated_prob=prob,
-            status=status,
+            raw_log_lr=round(result.final_llr, 4),
+            calibrated_prob=round(result.posterior_probability, 4),
+            status=DECISION_TO_STATUS.get(result.decision.value, "PROPOSED"),
             model_version="v1.0-LLR",
             calibration_version="v1.0-Sigmoid",
             created_at=BASE - timedelta(days=rng.randint(1, 60)),
         ))
 
+        # The waterfall the UI draws: one row per contributing item, carrying
+        # the engine's own post-discount contribution.
+        # ItemContributionBreakdown.to_dict() keys on `evidence_id` and
+        # `llr_contrib`. This looked up "id" and "contribution" -- neither key
+        # exists, so every lookup missed and every contribution silently
+        # defaulted to 0.0. The waterfall then displayed a stored LLR of 20.50
+        # above evidence rows summing to zero, on 13 of 14 links.
+        by_id = {c.get("evidence_id"): c for c in result.contributions}
+        for it in items:
+            c = by_id.get(it.id, {})
+            session.add(HypothesisEvidence(
+                id=uuidv7_str(),
+                hypothesis_id=hyp_id,
+                evidence_id=it.id,
+                family=it.family.value,
+                raw_llr=round(float(c.get("raw_llr", it.get_effective_llr())), 4),
+                contribution=round(float(c.get("llr_contrib", 0.0)), 4),
+                reliability_weight=1.0,
+                is_contradiction=it.is_contradiction,
+            ))
+
     session.commit()
-    print(f"[+] Committed {len(ACTORS)} actors, 7 onion services, 5 servers, {len(HYPOTHESES)} hypotheses.")
+    print(f"[+] Committed {len(ACTORS)} actors, 7 onion services, 5 servers, "
+          f"{len(LINK_EVIDENCE)} engine-scored hypotheses.")
 
 
 def main():

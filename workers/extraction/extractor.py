@@ -24,7 +24,13 @@ class ExtractionEngine:
     @classmethod
     def extract_entities(cls, text_content: str) -> Dict[str, Any]:
         """Extract structured identifiers from raw text content."""
-        pgp_matches = [m.replace(" ", "").upper() for m in cls.PGP_FINGERPRINT_REGEX.findall(text_content)]
+        # The `\s?` between hex groups matches a newline as readily as a space,
+        # so the tenth group swallowed the trailing line break and the stored
+        # fingerprint carried a newline inside it. That value then never
+        # compared equal to the same key extracted from a differently-wrapped
+        # page -- an exact-identity match silently lost to whitespace.
+        pgp_matches = ["".join(m.split()).upper()
+                       for m in cls.PGP_FINGERPRINT_REGEX.findall(text_content)]
         btc_matches = list(set(cls.BTC_ADDRESS_REGEX.findall(text_content)))
         eth_matches = list(set(cls.ETH_ADDRESS_REGEX.findall(text_content)))
         xmr_matches = list(set(cls.XMR_ADDRESS_REGEX.findall(text_content)))

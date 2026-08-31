@@ -23,12 +23,18 @@ class CaseStatus(str, Enum):
 
 
 class HypothesisStatus(str, Enum):
+    """States a hypothesis can rest in.
+
+    ACCEPT/REJECT were also members here -- the decision verbs, admitted
+    because the review endpoint wrote `req.decision.value` straight into the
+    status column. That let a just-accepted hypothesis sit in state "ACCEPT",
+    which no filter tab and no badge colour matched. The verbs live in
+    DecisionEnum; only past-tense states belong in a status.
+    """
     PROPOSED = "PROPOSED"
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
     INSUFFICIENT = "INSUFFICIENT"
-    ACCEPT = "ACCEPT"
-    REJECT = "REJECT"
 
 
 class DecisionEnum(str, Enum):
@@ -92,6 +98,20 @@ class CaseResponse(BaseModel):
     created_by: str
     created_at: datetime
     member_count: int = 1
+
+
+class CaseIdentifierCreate(BaseModel):
+    id_type: str = Field(..., min_length=1, max_length=50)
+    value: str = Field(..., min_length=1, max_length=512)
+
+
+class CaseIdentifierResponse(BaseModel):
+    id: str
+    case_id: str
+    id_type: str
+    value: str
+    added_by: str
+    created_at: datetime
 
 
 # Entity Schemas
@@ -164,6 +184,10 @@ class EvidenceSchema(BaseModel):
     is_immutable: bool = True
     created_at: datetime
     sha256: Optional[str] = None
+    # Withdrawn evidence stays in the ledger and is surfaced as retracted,
+    # so the vault can show it struck through rather than making it vanish.
+    retracted_at: Optional[datetime] = None
+    retraction_reason: Optional[str] = None
 
 
 class EvidenceWaterfallItem(BaseModel):
@@ -178,7 +202,11 @@ class EvidenceWaterfallItem(BaseModel):
     is_contradiction: bool
     dependence_group: str
     timestamp: datetime
-    sha256: str
+    # Optional on purpose. This was a required str, so the endpoint substituted
+    # e3b0c442...b855 -- the SHA-256 of the empty string -- whenever the
+    # artifact was missing, displaying "no provenance" as a verified digest.
+    # Absent provenance must read as absent.
+    sha256: Optional[str] = None
 
 
 # Hypothesis & Attribution

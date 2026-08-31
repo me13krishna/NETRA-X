@@ -31,11 +31,12 @@ from packages.schemas.models import (
     PGPKeySchema, WalletSchema, OnionServiceSchema, EvidenceSchema,
     EvidenceWaterfallItem, HypothesisSchema, ReviewRequest, AuditLogSchema,
     SearchResponse, SearchResultItem, CaseCreate, CaseResponse, DecisionEnum,
+    CaseIdentifierCreate, CaseIdentifierResponse,
     HypothesisStatus, IngestRequest, IngestResponse, ExtractedEvidence
 )
 from apps.api.database.session import SyncSessionLocal, init_db_sync
 from apps.api.database.models import (
-    User, Case, CaseMember, Actor, Alias, Account, PGPKey, Wallet,
+    User, Case, CaseMember, CaseIdentifier, Actor, Alias, Account, PGPKey, Wallet,
     OnionService, Server, Artifact, Evidence, Hypothesis, HypothesisEvidence,
     AnalystReview, AuditLog, Source, Observation
 )
@@ -414,13 +415,126 @@ def get_actor_graph(id: str, db: Session = Depends(get_db), user: User = Depends
 
 @app.get("/api/v1/actors/{id}/timeline")
 def get_actor_timeline(id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    events = [
-        {"id": "ev_01", "timestamp": "2026-06-01T12:00:00Z", "event_type": "First Seen Forum Post", "source": "DarkForums", "detail": "Posted PGP Key Fingerprint 4A8F912C..."},
-        {"id": "ev_02", "timestamp": "2026-07-15T14:30:00Z", "event_type": "BTC Co-Spending Transaction", "source": "Blockchain", "detail": "Wallet cluster transaction to bc1qxy2k..."},
-        {"id": "ev_03", "timestamp": "2026-08-10T09:15:00Z", "event_type": "Onion Infrastructure Scan", "source": "Onion Probe", "detail": "Favicon mmh3 hash -1598234912 matched clearnet IP 185.220.101.5"},
-        {"id": "ev_04", "timestamp": "2026-08-20T18:45:00Z", "event_type": "Market Migration Observed", "source": "EmpireX", "detail": "New account Vortex99 active with identical stylometry & PGP key"}
-    ]
-    return {"actor_id": id, "timeline": events}
+    """Observed activity for one actor, read from the evidence ledger.
+
+    This returned four hardcoded events -- the same PGP fingerprint, the same
+    wallet, the same favicon hash -- for every actor requested, including ones
+    that do not exist. The dates were in the future. Nothing here may be a
+    literal: an analyst reading a timeline is reading a claim about when
+    something was observed, and that claim has to come from a row.
+    """
+    from packages.copilot import tools
+
+    actor = db.query(Actor).filter_by(id=id).first()
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found")
+
+    events = []
+    for row in tools.get_actor_evidence(db, id, limit=40):
+        ev = db.query(Evidence).filter_by(id=row["evidence_id"]).first()
+        if ev is None:
+            continue
+        events.append({
+            "id": ev.id,
+            "timestamp": ev.created_at.isoformat() if ev.created_at else None,
+            "event_type": row["extraction_method"],
+            "family": row["family"],
+            "source": ev.source_uri,
+            "detail": ev.value,
+            "contribution": row["contribution"],
+            "is_contradiction": row["is_contradiction"],
+            "artifact_sha256": row["artifact_sha256"],
+        })
+
+    events.sort(key=lambda e: e["timestamp"] or "")
+    return {
+        "actor_id": id,
+        "actor": actor.primary_alias,
+        "last_seen": actor.last_seen.isoformat() if actor.last_seen else None,
+        "timeline": events,
+        "count": len(events),
+    }
+
+
+@app.get("/api/v1/config/engine")
+def get_engine_config(user: User = Depends(get_current_user)):
+    """Live engine constants, for a UI that must not hardcode them.
+
+    The attribution view printed "DISCOUNT FACTOR lambda = 0.25" and
+    "Postgres Source of Truth" as static text. The first silently becomes
+    wrong the moment anyone retunes the engine; the second was never true in
+    this deployment, which runs SQLite. A screen that explains a scoring
+    decision cannot describe the scorer from memory.
+    """
+    from packages.attribution.fusion import LLRFusionEngine, load_mu_table
+    from packages.common.types import FAMILY_CAPS
+    from apps.api.database.session import DATABASE_URL_SYNC
+
+    mu = load_mu_table()
+    backend = "PostgreSQL" if "postgres" in DATABASE_URL_SYNC else "SQLite"
+
+    return {
+        "lambda_discount": LLRFusionEngine().lambda_discount,
+        "family_caps": {k.value: v for k, v in FAMILY_CAPS.items()},
+        "feature_count": len(mu.get("features", {})),
+        "contradictions": {
+            k: v.get("contradiction_weight") for k, v in mu.get("contradictions", {}).items()
+        },
+        "thresholds": {"high_confidence": 0.85, "low_confidence": 0.50},
+        "storage_backend": backend,
+        "model_version": "v1.0-LLR",
+    }
+
+
+@app.get("/api/v1/actors/{id}/wallets")
+def get_actor_wallets(id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Wallets held by this actor and the co-owners of each cluster.
+
+    The UI previously drew a mixer-hop diagram from four invented transaction
+    hashes. We do not hold chain transaction data, so this returns what the
+    ledger actually knows -- addresses, chains, cluster membership, and which
+    other personas control an address in the same cluster. That co-ownership
+    is the finding the diagram was pretending to show.
+    """
+    wallets = db.query(Wallet).filter_by(actor_id=id).all()
+    actor = db.query(Actor).filter_by(id=id).first()
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found")
+
+    out = []
+    for w in wallets:
+        co_owners = []
+        if w.cluster_id:
+            siblings = db.query(Wallet).filter(
+                Wallet.cluster_id == w.cluster_id, Wallet.actor_id != id).all()
+            seen = set()
+            for sib in siblings:
+                if sib.actor_id in seen:
+                    continue
+                seen.add(sib.actor_id)
+                other = db.query(Actor).filter_by(id=sib.actor_id).first()
+                if other is not None:
+                    co_owners.append({
+                        "actor_id": other.id,
+                        "actor": other.primary_alias,
+                        "address": sib.address,
+                    })
+        out.append({
+            "address": w.address,
+            "chain": w.chain,
+            "cluster_id": w.cluster_id,
+            "co_owners": co_owners,
+        })
+
+    clustered = [w for w in out if w["cluster_id"]]
+    return {
+        "actor_id": id,
+        "actor": actor.primary_alias,
+        "wallets": out,
+        "wallet_count": len(out),
+        "clustered_count": len(clustered),
+        "shared_cluster_count": len([w for w in clustered if w["co_owners"]]),
+    }
 
 
 # --- EVIDENCE LEDGER ENDPOINTS ---
@@ -601,7 +715,9 @@ def list_evidence(db: Session = Depends(get_db), user: User = Depends(get_curren
             dependence_group=e.dependence_group,
             is_immutable=e.is_immutable,
             created_at=e.created_at,
-            sha256=e.artifact.sha256 if e.artifact else None
+            sha256=e.artifact.sha256 if e.artifact else None,
+            retracted_at=e.retracted_at,
+            retraction_reason=e.retraction_reason,
         ))
     return results
 
@@ -623,28 +739,92 @@ def get_evidence_item(id: str, db: Session = Depends(get_db), user: User = Depen
         dependence_group=e.dependence_group,
         is_immutable=e.is_immutable,
         created_at=e.created_at,
-        sha256=e.artifact.sha256 if e.artifact else None
+        sha256=e.artifact.sha256 if e.artifact else None,
+        retracted_at=e.retracted_at,
+        retraction_reason=e.retraction_reason,
     )
 
 
 @app.delete("/api/v1/evidence/{id}")
-def delete_evidence_item(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def retract_evidence_item(
+    id: str,
+    reason: str = Query("Retracted by analyst", max_length=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retract an evidence item. The row is withdrawn, never destroyed.
+
+    This used to be a hard `db.delete(e)`. That contradicted the product's
+    central claim -- an append-only, hash-chained chain of custody -- and it
+    silently corrupted attribution: HypothesisEvidence rows kept pointing at
+    the deleted evidence, so hypotheses carried scores derived from rows that
+    no longer existed, and the evidence waterfall rendered placeholder values
+    where the provenance should have been. `is_immutable` was never enforced
+    anywhere; it is enforced here.
+
+    Retraction is the correct operation. The item stays on the record, marked
+    withdrawn and attributed to whoever withdrew it, and stops contributing to
+    scores. The audit chain keeps both the ingestion and the retraction.
+    """
     e = db.query(Evidence).filter_by(id=id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Evidence item not found")
-    
-    db.delete(e)
+
+    if e.retracted_at is not None:
+        raise HTTPException(status_code=409, detail="Evidence item is already retracted")
+
+    cited_by = db.query(HypothesisEvidence).filter_by(evidence_id=id).count()
+
+    e.retracted_at = datetime.utcnow()
+    e.retracted_by = current_user.id
+    e.retraction_reason = reason
+
     append_audit_event(
         session=db,
         actor_user_id=current_user.id,
-        action="EVIDENCE_DELETED",
+        action="EVIDENCE_RETRACTED",
         resource_type="EVIDENCE",
         resource_id=id,
-        payload={"id": id}
+        payload={"id": id, "reason": reason, "cited_by_hypotheses": cited_by},
     )
     db.commit()
-    return {"status": "success", "message": f"Evidence {id} deleted successfully"}
 
+    # Withdrawing a claim has to move the numbers that rested on it. Leaving
+    # the score untouched would keep asserting a confidence derived from
+    # evidence that no longer counts, and leave the waterfall rows no longer
+    # summing to the headline above them.
+    from packages.evidence import integrity
+
+    rescored = []
+    for hid in {he.hypothesis_id for he in
+                db.query(HypothesisEvidence).filter_by(evidence_id=id).all()}:
+        delta = integrity.rescore_hypothesis(db, hid)
+        if delta:
+            rescored.append(delta)
+            append_audit_event(
+                session=db,
+                actor_user_id=current_user.id,
+                action="HYPOTHESIS_RESCORED",
+                resource_type="HYPOTHESIS",
+                resource_id=hid,
+                payload={"trigger": "evidence_retraction", "evidence_id": id, **delta},
+            )
+    if rescored:
+        db.commit()
+
+    return {
+        "status": "retracted",
+        "id": id,
+        "reason": reason,
+        "cited_by_hypotheses": cited_by,
+        "rescored": rescored,
+        "message": (
+            f"Evidence {id} retracted. It remains on the record and no longer "
+            f"counts toward attribution."
+            + (f" {len(rescored)} hypothesis/hypotheses rescored."
+               if rescored else "")
+        ),
+    }
 
 
 # --- HYPOTHESES & ATTRIBUTION ENDPOINTS ---
@@ -666,6 +846,10 @@ def list_hypotheses(db: Session = Depends(get_db), user: User = Depends(get_curr
 
         for he in h.evidence_items:
             ev = he.evidence
+            # Retracted evidence keeps its ledger row but stops backing a
+            # score, so it must not appear in the waterfall as live support.
+            if ev is not None and ev.retracted_at is not None:
+                continue
             item_data = EvidenceWaterfallItem(
                 evidence_id=ev.id if ev else he.evidence_id,
                 family=he.family,
@@ -678,7 +862,7 @@ def list_hypotheses(db: Session = Depends(get_db), user: User = Depends(get_curr
                 is_contradiction=he.is_contradiction,
                 dependence_group=ev.dependence_group if ev else "DEP_NONE",
                 timestamp=ev.created_at if ev else datetime.utcnow(),
-                sha256=ev.artifact.sha256 if (ev and ev.artifact) else "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                sha256=(ev.artifact.sha256 if (ev and ev.artifact) else None)
             )
             if he.is_contradiction:
                 contradictions.append(item_data)
@@ -730,6 +914,8 @@ def get_hypothesis(id: str, db: Session = Depends(get_db), user: User = Depends(
 
     for he in h.evidence_items:
         ev = he.evidence
+        if ev is not None and ev.retracted_at is not None:
+            continue
         item_data = EvidenceWaterfallItem(
             evidence_id=ev.id if ev else he.evidence_id,
             family=he.family,
@@ -742,7 +928,7 @@ def get_hypothesis(id: str, db: Session = Depends(get_db), user: User = Depends(
             is_contradiction=he.is_contradiction,
             dependence_group=ev.dependence_group if ev else "DEP_NONE",
             timestamp=ev.created_at if ev else datetime.utcnow(),
-            sha256=ev.artifact.sha256 if (ev and ev.artifact) else "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            sha256=(ev.artifact.sha256 if (ev and ev.artifact) else None)
         )
         if he.is_contradiction:
             contradictions.append(item_data)
@@ -774,13 +960,25 @@ def get_hypothesis(id: str, db: Session = Depends(get_db), user: User = Depends(
     )
 
 
+DECISION_TO_STATUS = {
+    "ACCEPT": "ACCEPTED",
+    "REJECT": "REJECTED",
+    "INSUFFICIENT": "INSUFFICIENT",
+}
+
+
 @app.post("/api/v1/hypotheses/{id}/review", response_model=HypothesisSchema)
 def submit_analyst_review(id: str, req: ReviewRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     h = db.query(Hypothesis).filter_by(id=id).first()
     if not h:
         raise HTTPException(status_code=404, detail="Hypothesis not found")
 
-    h.status = req.decision.value
+    # A decision is a verb the analyst performs (ACCEPT); a status is the state
+    # it leaves behind (ACCEPTED). Assigning the verb straight into the status
+    # column made a just-accepted hypothesis disappear from the ACCEPTED filter
+    # tab and lose its badge colour, because the seed and the UI both use the
+    # past-tense form. The review row keeps the verb; only the state is mapped.
+    h.status = DECISION_TO_STATUS[req.decision.value]
     h.reviewed_at = datetime.utcnow()
     h.reviewer_id = current_user.id
 
@@ -829,7 +1027,7 @@ def evaluate_attribution_on_demand(raw_items: List[Dict[str, Any]], current_user
             source_uri=item.get("source_uri", "http://dynamic.onion"),
             extraction_method=item.get("extraction_method", "manual_input"),
             timestamp=item.get("timestamp", datetime.utcnow().isoformat()),
-            sha256=item.get("sha256", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            sha256=item.get("sha256"),
             is_contradiction=bool(item.get("is_contradiction", False)),
             contradiction_type=item.get("contradiction_type", ""),
             abstain=bool(item.get("abstain", False))
@@ -929,6 +1127,73 @@ def delete_case(id: str, db: Session = Depends(get_db), current_user: User = Dep
     )
     db.commit()
     return {"status": "success", "message": f"Case {id} deleted successfully"}
+
+
+@app.get("/api/v1/investigations/{id}/identifiers",
+         response_model=List[CaseIdentifierResponse])
+def list_case_identifiers(id: str, db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    """Identifiers an analyst has attached to this investigation."""
+    if db.query(Case).filter_by(id=id).first() is None:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+
+    rows = (db.query(CaseIdentifier)
+            .filter_by(case_id=id)
+            .order_by(CaseIdentifier.created_at.desc()).all())
+    return [CaseIdentifierResponse(
+        id=r.id, case_id=r.case_id, id_type=r.id_type, value=r.value,
+        added_by=r.added_by, created_at=r.created_at) for r in rows]
+
+
+@app.post("/api/v1/investigations/{id}/identifiers",
+          response_model=CaseIdentifierResponse, status_code=201)
+def add_case_identifier(id: str, req: CaseIdentifierCreate,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """Attach an identifier of interest to an investigation.
+
+    The Cases view raised an "identifier added" toast and called nothing --
+    the value was never sent, never stored, and gone on the next render, while
+    the toast said otherwise. It is now persisted against the case, attributed
+    to the analyst who added it, and appended to the audit chain.
+    """
+    case = db.query(Case).filter_by(id=id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+
+    value = req.value.strip()
+    if not value:
+        raise HTTPException(status_code=422, detail="Identifier value is required")
+
+    existing = (db.query(CaseIdentifier)
+                .filter_by(case_id=id, id_type=req.id_type, value=value).first())
+    if existing is not None:
+        raise HTTPException(status_code=409,
+                            detail="That identifier is already attached to this case")
+
+    row = CaseIdentifier(
+        id=uuidv7_str(),
+        case_id=id,
+        id_type=req.id_type,
+        value=value,
+        added_by=current_user.id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(row)
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="CASE_IDENTIFIER_ADDED",
+        resource_type="CASE",
+        resource_id=id,
+        payload={"id_type": req.id_type, "value": value},
+    )
+    db.commit()
+    db.refresh(row)
+
+    return CaseIdentifierResponse(
+        id=row.id, case_id=row.case_id, id_type=row.id_type,
+        value=row.value, added_by=row.added_by, created_at=row.created_at)
 
 
 @app.patch("/api/v1/investigations/{id}/archive")
@@ -1041,9 +1306,21 @@ def export_stix(hypothesis_id: Optional[str] = None, db: Session = Depends(get_d
     """Exports threat intelligence in STIX 2.1 JSON bundle format."""
     if not hypothesis_id:
         hyp = db.query(Hypothesis).first()
-        hypothesis_id = hyp.id if hyp else "hyp_default"
+        if hyp is None:
+            raise HTTPException(status_code=404, detail="No hypothesis available to export")
+        hypothesis_id = hyp.id
     h_schema = get_hypothesis(hypothesis_id, db, current_user)
-    actor_data = {"aliases": [h_schema.subject_label, "DarkSpectre", "CipherVoid"]}
+
+    # The alias list was ["<subject>", "DarkSpectre", "CipherVoid"] -- two real
+    # aliases, but ShadowByte's, hardcoded onto whichever hypothesis was being
+    # exported. A STIX bundle is shared outward as threat intelligence, so
+    # attaching one actor's handles to another's is a contamination that
+    # travels. The subject's own aliases are read from the ledger.
+    subject = db.query(Actor).filter_by(id=h_schema.subject_entity_id).first()
+    aliases = [h_schema.subject_label]
+    if subject is not None:
+        aliases += [a.value for a in subject.aliases if a.value != h_schema.subject_label]
+    actor_data = {"aliases": aliases}
     stix_bundle = generate_stix_bundle(h_schema.model_dump(), actor_data)
     return Response(
         content=json.dumps(stix_bundle, indent=2),
@@ -1057,7 +1334,9 @@ def export_csv(hypothesis_id: Optional[str] = None, db: Session = Depends(get_db
     """Exports attribution evidence breakdown in CSV format."""
     if not hypothesis_id:
         hyp = db.query(Hypothesis).first()
-        hypothesis_id = hyp.id if hyp else "hyp_default"
+        if hyp is None:
+            raise HTTPException(status_code=404, detail="No hypothesis available to export")
+        hypothesis_id = hyp.id
     h_schema = get_hypothesis(hypothesis_id, db, current_user)
     all_evidence = [item.model_dump() for item in (h_schema.supporting_evidence + h_schema.contradictions)]
     csv_str = generate_csv_export(all_evidence)
@@ -1114,73 +1393,48 @@ def query_copilot(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Constrained AI Investigation Assistant. Never makes primary linkage decisions."""
-    # Extract query text from query params or JSON body payload
+    """Investigation assistant, answered from the authoritative ledger.
+
+    Was six hardcoded paragraphs selected by keyword: asking about any actor
+    returned the same ShadowByte/Vortex99 text, including for gibberish, with
+    every figure a string literal. That is the opposite of what this system
+    claims -- an assistant that fabricates a confident answer to every question
+    undermines a product built on abstention and provenance.
+
+    Now every claim comes from a row. `packages.copilot` resolves the entity,
+    pulls its hypotheses and evidence, and reports the real numbers; when the
+    ledger cannot answer it says so rather than substituting a different actor.
+    Claude drives the same tools when ANTHROPIC_API_KEY is configured; without
+    it the deterministic path answers, which is the offline demo default.
+    """
+    from packages.copilot import ask
+
+    # Accept the question from a query param or a JSON body, so the drawer can
+    # POST a payload without the caller having to URL-encode it.
     q_str = query_text
     if not q_str and payload:
         q_str = payload.get("query_text") or payload.get("query") or payload.get("prompt")
-    if not q_str:
-        q_str = "Explain threat actor linkage and evidence status"
 
-    q_lower = q_str.lower()
-    evidence_items = db.query(Evidence).all()
-    evidence_count = len(evidence_items)
-    evidence_ids = [e.id for e in evidence_items[:5]]
-
-    if "lockbit" in q_lower or "ransomware" in q_lower:
-        response_text = (
-            f"LockBit Ransomware Syndicate Intelligence Analysis: "
-            f"Identified 3 co-spent BTC wallet clusters (total 14.82 BTC volume), 2 RSA-4096 PGP fingerprints (0x4A8F912C, 0x89B2E101), "
-            f"and 4 active .onion mirrors on Tor v3. "
-            f"Multi-modal fusion calibrated probability: 94.2% (High Confidence). "
-            f"All raw HTML payloads archived under WARC specification with immutable SHA-256 signatures."
-        )
-    elif "pgp" in q_lower or "key" in q_lower:
-        response_text = (
-            f"PGP Identity Correlation: "
-            f"Extracted 2 authoritative public key blocks from unstructured darknet forum posts. "
-            f"Fingerprint `4A8F912C9012` matches user handle 'Vortex99' across Exploit.in and XSS.is. "
-            f"Identity evidence family score: +4.15 LLR (Log-Likelihood Ratio)."
-        )
-    elif "wallet" in q_lower or "btc" in q_lower or "crypto" in q_lower or "monero" in q_lower:
-        response_text = (
-            f"Financial Blockchain Intelligence: "
-            f"Tracked UTXO co-spending inputs linking wallet `bc1q9v83k...` to `1A1zP1eP...`. "
-            f"Detected 2 peeling chain transactions routed through Tornado Cash / ChipMixer. "
-            f"Financial evidence family score: +3.80 LLR."
-        )
-    elif "stylometry" in q_lower or "writing" in q_lower or "text" in q_lower:
-        response_text = (
-            f"Linguistic & Stylometric Analysis: "
-            f"Analyzed vocabulary frequency, function word distributions, and punctuation patterns. "
-            f"Neural Transformer embedding similarity: 0.912 cosine distance. "
-            f"Stylometry evidence family score: +2.95 LLR."
-        )
-    elif "audit" in q_lower or "hash" in q_lower or "chain" in q_lower:
-        response_text = (
-            f"Forensic Chain of Custody Audit: "
-            f"Cryptographic hash chain status: VERIFIED VALID. "
-            f"All {evidence_count} evidence items are immutably signed using SHA-256 digest trees. "
-            f"Zero hash mismatch or tampering detected."
-        )
-    else:
-        response_text = (
-            f"Based on the authoritative evidence ledger ({evidence_count} verified artifacts), "
-            f"Subject Entity 'ShadowByte' is linked to Candidate Account 'Vortex99' across 4 orthogonal evidence families: "
-            f"Exact Identity (PGP Key 4A8F912C...), Financial (BTC Wallet Co-Spending), Infrastructure (Favicon mmh3 -1598234912), "
-            f"and Stylometric Similarity (Burrows' Delta 0.12). "
-            f"One temporal contradiction is flagged (simultaneous postings from UTC+8 and UTC-5). "
-            f"Calibrated Confidence: 88.5% (High Confidence)."
-        )
-
+    # No default question. Substituting one would answer something the analyst
+    # did not ask; an empty query is refused, like any other unanswerable input.
+    result = ask(db, q_str or "")
     return {
         "query": q_str,
-        "response": response_text,
-        "referenced_evidence_ids": evidence_ids,
-        "disclaimer": "AI outputs generate hypotheses only and do not constitute primary evidence or authoritative attribution."
+        "response": result["answer"],
+        "answered": result["answered"],
+        "engine": result.get("engine", "deterministic"),
+        "intent": result.get("intent"),
+        "tools_used": result.get("tools_used", []),
+        "citation_count": len(result.get("citations", [])),
+        # Existing DoD contract: the assistant must cite the evidence rows its
+        # claim rests on, not just assert a conclusion.
+        "referenced_evidence_ids": result.get("evidence_ids", []),
+        "resolved_actor": result.get("resolved_actor"),
+        "disclaimer": (
+            "Derived from the evidence ledger. Attribution decisions require "
+            "analyst review; this assistant does not make them."
+        ),
     }
-
-
 
 
 # --- ADVANCED ATTRIBUTION & ML ENDPOINTS ---

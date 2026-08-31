@@ -7,12 +7,15 @@ interface EvidenceWaterfallProps {
   supporting: any[];
   contradictions: any[];
   familyBreakdown?: Record<string, number>;
+  /** Live storage backend label from /api/v1/config/engine (e.g. "SQLite", "PostgreSQL"). */
+  storageBackend?: string;
 }
 
 export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
   supporting,
   contradictions,
-  familyBreakdown = {}
+  familyBreakdown = {},
+  storageBackend = "Evidence Ledger",
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedModalItem, setSelectedModalItem] = useState<any | null>(null);
@@ -35,7 +38,7 @@ export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
             <span>Multi-Evidence Family Contribution Cascade</span>
           </h3>
           <div className="text-xs font-mono text-netra-subtle">
-            <span className="text-netra-purple font-bold">Postgres Source of Truth</span>
+            <span className="text-netra-purple font-bold">{storageBackend} Source of Truth</span>
           </div>
         </div>
 
@@ -146,9 +149,9 @@ export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
                       </div>
                       <div>
                         <span className="text-netra-subtle">Raw Artifact SHA-256:</span>
-                        <div className="text-netra-valid break-all flex items-center space-x-1">
-                          <Hash className="w-3 h-3 text-netra-valid shrink-0" />
-                          <span>{item.sha256}</span>
+                        <div className={`break-all flex items-center space-x-1 ${item.sha256 ? "text-netra-valid" : "text-netra-subtle"}`}>
+                          <Hash className={`w-3 h-3 shrink-0 ${item.sha256 ? "text-netra-valid" : "text-netra-subtle"}`} />
+                          <span>{item.sha256 ?? "no artifact digest on record"}</span>
                         </div>
                       </div>
                     </div>
@@ -245,8 +248,8 @@ export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
               </div>
               <div>
                 <span className="text-netra-subtle block">Immutable Artifact SHA-256:</span>
-                <span className="text-netra-valid break-all block p-2 bg-netra-bg rounded border border-netra-valid/30">
-                  {selectedModalItem.sha256}
+                <span className={`break-all block p-2 bg-netra-bg rounded border ${selectedModalItem.sha256 ? "text-netra-valid border-netra-valid/30" : "text-netra-subtle border-netra-border"}`}>
+                  {selectedModalItem.sha256 ?? "No artifact digest on record for this item."}
                 </span>
               </div>
               <div>

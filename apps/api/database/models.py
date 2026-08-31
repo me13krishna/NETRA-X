@@ -49,6 +49,26 @@ class CaseMember(Base):
     user = relationship("User")
 
 
+class CaseIdentifier(Base):
+    """An identifier an analyst has attached to an investigation.
+
+    The Cases view had an "add identifier" dialog that raised a success toast
+    and called nothing -- the value was never persisted, so it vanished on the
+    next render and the case it claimed to be attached to never knew about it.
+    Recording an identifier of interest against a case is a real part of the
+    workflow, so it is stored, attributed and audited like anything else.
+    """
+
+    __tablename__ = "case_identifiers"
+
+    id = Column(String(36), primary_key=True)
+    case_id = Column(String(36), ForeignKey("cases.id"), nullable=False, index=True)
+    id_type = Column(String(50), nullable=False)
+    value = Column(String(512), nullable=False)
+    added_by = Column(String(36), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Actor(Base):
     __tablename__ = "actors"
 
@@ -160,6 +180,19 @@ class Evidence(Base):
     dependence_group = Column(String(255), nullable=False, index=True)
     is_immutable = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Retraction, not deletion.
+    #
+    # The ledger's whole claim is an append-only chain of custody, and
+    # `is_immutable` was decorative -- nothing read it, while a hard DELETE
+    # endpoint physically removed rows. That left 36 of 69 cited evidence rows
+    # missing, so hypotheses scored against evidence that no longer existed and
+    # the waterfall rendered placeholders in their place.
+    #
+    # Withdrawn evidence stays on the record and stops counting toward scores.
+    retracted_at = Column(DateTime, nullable=True)
+    retracted_by = Column(String(36), nullable=True)
+    retraction_reason = Column(Text, nullable=True)
 
     artifact = relationship("Artifact")
 

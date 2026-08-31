@@ -229,7 +229,7 @@ export const ActorProfile: React.FC<ActorProfileProps> = ({
             </div>
           </div>
 
-          <CryptoUTXOVisualizer initialWallet={actor.wallets[0]?.address} />
+          <CryptoUTXOVisualizer actorId={actor.id} />
         </div>
       )}
 

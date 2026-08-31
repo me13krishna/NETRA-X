@@ -22,19 +22,28 @@ export const DarknetIngestionModal: React.FC<DarknetIngestionModalProps> = ({
   const toast = useToast();
   const [sourceUri, setSourceUri] = useState("http://darkmarketx37ab.onion/threads/lockbit-vortex99");
   const [sourceName, setSourceName] = useState("Darknet_Exploit_Forum_Mirror");
+  // Sample payload for the demo. The addresses here are format-valid on
+  // purpose: the previous sample used a truncated bech32 wallet and a 67-char
+  // XMR string, which the extractor correctly rejected -- so the modal
+  // reported one entity extracted from a page that visibly listed several,
+  // and the XMR abstention never triggered.
   const [rawContent, setRawContent] = useState(
     `[Exploit.in Forum Post #88912]
 User: Vortex99 (Alias: ShadowByte)
 PGP Key Fingerprint: 4F3B 8C90 1234 5678 9ABC DEF0 4A8F 912C 9012 3456
-Deposit Wallet: bc1q9v83k0q72m81l92x04a8f912c3456789abc
+Deposit Wallet: bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq
+Legacy Wallet: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+ETH Payout: 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+XMR Address: 4A4BJRYfnu29GPWdksz7EMUbiqx5CKSZgov3AHQXemt18FNVcjry6DLTahpw4BJRYfnu29GPWdksz7EMUbiqx5CKSZgov3A
+Mirror: http://chmrw3afkpuz6dinsx4bglqv27ejoty5chmrw3afkpuz6dinsx4bglqv.onion/thread/88912
 Contact Jabber: shadow_vortex99@jabber.cz
-XMR Address: 888tXzpR1234567890abcdef1234567890abcdef1234567890abcdef1234567890abc
 Description: Selling initial access credentials to ransomware targets. Payment via BTC co-spending or XMR.`
   );
 
   const [pipelineStep, setPipelineStep] = useState<number>(0);
   const [isCrawling, setIsCrawling] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -44,6 +53,7 @@ Description: Selling initial access credentials to ransomware targets. Payment v
     setIsCrawling(true);
     setPipelineStep(1);
     setResult(null);
+    setError(null);
 
     // Simulate animated step progression for live demo visual effect
     setTimeout(() => setPipelineStep(2), 700);
@@ -72,24 +82,23 @@ Description: Selling initial access credentials to ransomware targets. Payment v
             `Extracted ${res.extracted_count} evidence entities • SHA-256: ${res.artifact_sha256.substring(0, 12)}...`
           );
         } catch (err: any) {
-          // Fallback mock response if backend fails or seed exists
-          const mockRes = {
-            observation_id: "obs_live_" + Date.now().toString().slice(-6),
-            artifact_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            source_id: "src_onion_01",
-            lawful_basis: "PASSIVE_OSINT",
-            duplicate: false,
-            extracted_count: 4,
-            xmr_abstain: true,
-            evidence: [
-              { id: "ev_1", kind: "PGP_KEY", value: "4F3B8C90...9012", dependence_group: "DEP_PGP", confidence: 1.0 },
-              { id: "ev_2", kind: "BTC_WALLET", value: "bc1q9v83k0...", dependence_group: "DEP_BTC", confidence: 1.0 },
-              { id: "ev_3", kind: "EMAIL", value: "shadow_vortex99@jabber.cz", dependence_group: "DEP_EMAIL", confidence: 0.95 },
-            ],
-          };
-          setResult(mockRes);
-          setPipelineStep(5);
-          toast.push("ok", "Ingestion Complete", "Extracted 3 evidence entities & verified SHA-256 hash");
+          /*
+           * No mock fallback.
+           *
+           * This branch used to fabricate a successful ingestion when the
+           * request failed: invented evidence ids, a made-up PGP key and BTC
+           * wallet, and artifact_sha256 e3b0c442...b855 -- the SHA-256 of the
+           * empty string -- then raised an "Ingestion Complete" toast. On
+           * screen that is indistinguishable from a real crawl, so a backend
+           * outage during a demo would look like a working pipeline, and the
+           * counts did not even agree with each other (extracted_count 4
+           * against three listed items).
+           *
+           * A failed ingestion has to look like a failed ingestion.
+           */
+          setError(err?.message ?? "Ingestion failed. No evidence was written to the ledger.");
+          setPipelineStep(0);
+          toast.push("error", "Ingestion Failed", "No evidence was written to the ledger.");
         } finally {
           setIsCrawling(false);
         }
@@ -239,6 +248,18 @@ Description: Selling initial access credentials to ransomware targets. Payment v
                 })}
               </div>
             </div>
+
+            {/* Failure has to be visible: the modal previously rendered a
+                fabricated success in this situation. */}
+            {error && (
+              <div className="p-3 bg-netra-red/10 border border-netra-red/50 rounded-lg text-[11px] font-mono text-netra-red space-y-1">
+                <div className="font-bold border-b border-netra-red/30 pb-1">INGESTION FAILED</div>
+                <div className="break-all">{error}</div>
+                <div className="text-netra-muted">
+                  Nothing was written to the evidence ledger. Confirm the API is reachable and retry.
+                </div>
+              </div>
+            )}
 
             {/* Results Output Summary */}
             {result && (
