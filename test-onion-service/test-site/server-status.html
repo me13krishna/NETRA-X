@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+PLANTED MISCONFIG #1: exposed status/diagnostic page.
+Real operators sometimes leave a status/monitoring endpoint reachable that
+leaks internal info (uptime, internal IPs, software versions). This page is
+a synthetic stand-in Module 1's scanner should learn to flag as a risky
+exposed endpoint, at /server-status.html.
+-->
+<html>
+<head><title>Apache Server Status (synthetic)</title></head>
+<body>
+<h1>Server Status (synthetic test page)</h1>
+<pre>
+Uptime: 41 days
+Internal IP: 10.0.0.7
+Software: Apache/2.4.41 (Ubuntu) -- SYNTHETIC, planted for scanner testing
+</pre>
+</body>
+</html>
