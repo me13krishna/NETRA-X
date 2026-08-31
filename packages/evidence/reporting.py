@@ -181,9 +181,21 @@ def generate_pdf_report(
     # 5. Analyst Decision & Audit Trail Seal
     story.append(Paragraph("Provenance & Hash-Chain Integrity Seal", heading_style))
     audit_status_text = "<font color='#10B981'><b>VERIFIED IMMUTABLE</b></font>" if audit_chain_valid else "<font color='#EF4444'><b>UNVERIFIED</b></font>"
+    # The digest is reported only when one exists. This defaulted to
+    # e3b0c442...b855 -- the SHA-256 of the empty string -- so a hypothesis
+    # whose evidence carried no artifact still printed a plausible-looking
+    # digest under the heading "Provenance & Hash-Chain Integrity Seal". Of
+    # every place to state a hash that was never computed, the signed PDF that
+    # leaves the system as evidence is the worst.
+    _supporting = hypothesis_data.get("supporting_evidence") or [{}]
+    _digest = _supporting[0].get("sha256")
+    _digest_text = (
+        f"<font name='Courier'>{_digest}</font>" if _digest
+        else "<font color='#EF4444'>no artifact digest on record</font>"
+    )
     provenance_text = (
         f"Cryptographic Hash Chain: {audit_status_text}<br/>"
-        f"Primary Artifact SHA-256: <font name='Courier'>{hypothesis_data.get('supporting_evidence', [{}])[0].get('sha256', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')}</font><br/>"
+        f"Primary Artifact SHA-256: {_digest_text}<br/>"
         f"Authoritative Model Version: {hypothesis_data.get('model_version', 'v1.0-LLR')}<br/>"
         f"Calibration Algorithm: {hypothesis_data.get('calibration_version', 'v1.0-Isotonic')}"
     )

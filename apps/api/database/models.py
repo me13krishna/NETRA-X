@@ -49,6 +49,26 @@ class CaseMember(Base):
     user = relationship("User")
 
 
+class CaseIdentifier(Base):
+    """An identifier an analyst has attached to an investigation.
+
+    The Cases view had an "add identifier" dialog that raised a success toast
+    and called nothing -- the value was never persisted, so it vanished on the
+    next render and the case it claimed to be attached to never knew about it.
+    Recording an identifier of interest against a case is a real part of the
+    workflow, so it is stored, attributed and audited like anything else.
+    """
+
+    __tablename__ = "case_identifiers"
+
+    id = Column(String(36), primary_key=True)
+    case_id = Column(String(36), ForeignKey("cases.id"), nullable=False, index=True)
+    id_type = Column(String(50), nullable=False)
+    value = Column(String(512), nullable=False)
+    added_by = Column(String(36), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Actor(Base):
     __tablename__ = "actors"
 

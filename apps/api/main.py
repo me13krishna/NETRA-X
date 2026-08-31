@@ -31,11 +31,12 @@ from packages.schemas.models import (
     PGPKeySchema, WalletSchema, OnionServiceSchema, EvidenceSchema,
     EvidenceWaterfallItem, HypothesisSchema, ReviewRequest, AuditLogSchema,
     SearchResponse, SearchResultItem, CaseCreate, CaseResponse, DecisionEnum,
+    CaseIdentifierCreate, CaseIdentifierResponse,
     HypothesisStatus, IngestRequest, IngestResponse, ExtractedEvidence
 )
 from apps.api.database.session import SyncSessionLocal, init_db_sync
 from apps.api.database.models import (
-    User, Case, CaseMember, Actor, Alias, Account, PGPKey, Wallet,
+    User, Case, CaseMember, CaseIdentifier, Actor, Alias, Account, PGPKey, Wallet,
     OnionService, Server, Artifact, Evidence, Hypothesis, HypothesisEvidence,
     AnalystReview, AuditLog, Source, Observation
 )
@@ -1126,6 +1127,73 @@ def delete_case(id: str, db: Session = Depends(get_db), current_user: User = Dep
     )
     db.commit()
     return {"status": "success", "message": f"Case {id} deleted successfully"}
+
+
+@app.get("/api/v1/investigations/{id}/identifiers",
+         response_model=List[CaseIdentifierResponse])
+def list_case_identifiers(id: str, db: Session = Depends(get_db),
+                          user: User = Depends(get_current_user)):
+    """Identifiers an analyst has attached to this investigation."""
+    if db.query(Case).filter_by(id=id).first() is None:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+
+    rows = (db.query(CaseIdentifier)
+            .filter_by(case_id=id)
+            .order_by(CaseIdentifier.created_at.desc()).all())
+    return [CaseIdentifierResponse(
+        id=r.id, case_id=r.case_id, id_type=r.id_type, value=r.value,
+        added_by=r.added_by, created_at=r.created_at) for r in rows]
+
+
+@app.post("/api/v1/investigations/{id}/identifiers",
+          response_model=CaseIdentifierResponse, status_code=201)
+def add_case_identifier(id: str, req: CaseIdentifierCreate,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """Attach an identifier of interest to an investigation.
+
+    The Cases view raised an "identifier added" toast and called nothing --
+    the value was never sent, never stored, and gone on the next render, while
+    the toast said otherwise. It is now persisted against the case, attributed
+    to the analyst who added it, and appended to the audit chain.
+    """
+    case = db.query(Case).filter_by(id=id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+
+    value = req.value.strip()
+    if not value:
+        raise HTTPException(status_code=422, detail="Identifier value is required")
+
+    existing = (db.query(CaseIdentifier)
+                .filter_by(case_id=id, id_type=req.id_type, value=value).first())
+    if existing is not None:
+        raise HTTPException(status_code=409,
+                            detail="That identifier is already attached to this case")
+
+    row = CaseIdentifier(
+        id=uuidv7_str(),
+        case_id=id,
+        id_type=req.id_type,
+        value=value,
+        added_by=current_user.id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(row)
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="CASE_IDENTIFIER_ADDED",
+        resource_type="CASE",
+        resource_id=id,
+        payload={"id_type": req.id_type, "value": value},
+    )
+    db.commit()
+    db.refresh(row)
+
+    return CaseIdentifierResponse(
+        id=row.id, case_id=row.case_id, id_type=row.id_type,
+        value=row.value, added_by=row.added_by, created_at=row.created_at)
 
 
 @app.patch("/api/v1/investigations/{id}/archive")

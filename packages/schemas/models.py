@@ -100,6 +100,20 @@ class CaseResponse(BaseModel):
     member_count: int = 1
 
 
+class CaseIdentifierCreate(BaseModel):
+    id_type: str = Field(..., min_length=1, max_length=50)
+    value: str = Field(..., min_length=1, max_length=512)
+
+
+class CaseIdentifierResponse(BaseModel):
+    id: str
+    case_id: str
+    id_type: str
+    value: str
+    added_by: str
+    created_at: datetime
+
+
 # Entity Schemas
 class AliasSchema(BaseModel):
     id: str
