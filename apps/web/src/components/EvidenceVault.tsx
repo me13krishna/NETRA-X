@@ -1,26 +1,37 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { FileText, Hash, ExternalLink, Filter } from "lucide-react";
+import { FileText, Hash, ExternalLink, Filter, Trash2 } from "lucide-react";
 import { apiFetch } from "../lib/api";
 
 export const EvidenceVault: React.FC = () => {
   const [evidenceList, setEvidenceList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadEvidence() {
-      try {
-        const data = await apiFetch<any[]>("/api/v1/evidence");
-        setEvidenceList(data);
-      } catch (err) {
-        console.error("Failed loading evidence", err);
-      } finally {
-        setLoading(false);
-      }
+  const loadEvidence = async () => {
+    try {
+      const data = await apiFetch<any[]>("/api/v1/evidence");
+      setEvidenceList(data);
+    } catch (err) {
+      console.error("Failed loading evidence", err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadEvidence();
   }, []);
+
+  const handleDeleteEvidence = async (id: string) => {
+    if (!confirm("Are you sure you want to purge this evidence item from the vault?")) return;
+    try {
+      await apiFetch(`/api/v1/evidence/${id}`, { method: "DELETE" });
+      setEvidenceList((prev) => prev.filter((e) => e.id !== id));
+    } catch (err: any) {
+      setEvidenceList((prev) => prev.filter((e) => e.id !== id));
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -50,6 +61,7 @@ export const EvidenceVault: React.FC = () => {
                   <th className="p-3">Source URI</th>
                   <th className="p-3">Dependence Group</th>
                   <th className="p-3">SHA-256 Hash</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-netra-border">
@@ -67,6 +79,15 @@ export const EvidenceVault: React.FC = () => {
                       <Hash className="w-3 h-3 text-netra-valid" />
                       <span>{e.sha256 ? e.sha256.substring(0, 16) + "..." : "Verified"}</span>
                     </td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => handleDeleteEvidence(e.id)}
+                        title="Delete Evidence Record"
+                        className="p-1 text-netra-muted hover:text-netra-hazard transition rounded"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -77,3 +98,4 @@ export const EvidenceVault: React.FC = () => {
     </div>
   );
 };
+

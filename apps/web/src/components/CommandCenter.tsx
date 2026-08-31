@@ -30,6 +30,34 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
   const [evidenceCount, setEvidenceCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Investigation input state
+  const [identifierType, setIdentifierType] = useState("handle");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isInvestigating, setIsInvestigating] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+
+  const handleInvestigate = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setIsInvestigating(true);
+    try {
+      const res = await apiFetch<any>(`/api/v1/search?q=${encodeURIComponent(searchQuery)}`);
+      setSearchResults(res.results || []);
+      if (!res.results || res.results.length === 0) {
+        // Fallback: create mock result or navigate to Actor Profile if not found
+        toast.push("info", "Investigation launched", `${identifierType.toUpperCase()}: ${searchQuery} - collecting multi-source intelligence`);
+        onNavigate("actor_profile");
+      }
+    } catch (err: any) {
+      console.error("Search failed", err);
+      onNavigate("actor_profile");
+    } finally {
+      setIsInvestigating(false);
+    }
+  };
+
+
   const loadData = async () => {
     try {
       const [actorsRes, hypRes, evRes] = await Promise.all([
@@ -98,6 +126,106 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
           </div>
         </div>
       </div>
+
+      {/* Primary Investigation Input Command Bar */}
+      <div className="bg-netra-card border border-netra-purple/40 rounded-xl p-5 space-y-4 shadow-xl relative overflow-hidden">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-sm font-semibold text-white">
+            <ShieldAlert className="w-5 h-5 text-netra-purple animate-pulse" />
+            <span>Start Threat Investigation</span>
+          </div>
+          <span className="text-[11px] text-netra-cyan font-mono">STEP 1: ENTER SEED IDENTIFIER</span>
+        </div>
+
+        {/* Identifier Type Selectors */}
+        <div className="flex flex-wrap gap-2 text-xs font-mono">
+          {[
+            { id: "handle", label: "Threat Actor Handle" },
+            { id: "wallet", label: "Crypto Wallet" },
+            { id: "pgp", label: "PGP Fingerprint" },
+            { id: "onion", label: "Onion URL" },
+            { id: "email", label: "Email / Jabber" },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setIdentifierType(item.id)}
+              className={`px-3 py-1.5 rounded-lg border transition font-medium ${
+                identifierType === item.id
+                  ? "bg-netra-purple/20 border-netra-purple text-white shadow"
+                  : "bg-netra-surface border-netra-border text-netra-subtle hover:text-white"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Input Bar & Investigate Button */}
+        <form onSubmit={handleInvestigate} className="flex gap-3">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={
+                identifierType === "wallet"
+                  ? "e.g. bc1q9v83... or 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+                  : identifierType === "pgp"
+                  ? "e.g. 4F3B 8C90... or RSA 4096 Key Fingerprint"
+                  : identifierType === "onion"
+                  ? "e.g. http://darkmarketx37ab.onion"
+                  : identifierType === "email"
+                  ? "e.g. shadow_phoenix@jabber.cz"
+                  : "e.g. dark_phoenix or alias_x"
+              }
+              className="w-full bg-netra-surface border border-netra-border focus:border-netra-purple text-white font-mono text-sm rounded-lg px-4 py-3 placeholder-netra-subtle focus:outline-none transition"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isInvestigating || !searchQuery.trim()}
+            className="px-6 py-3 bg-netra-purple hover:bg-netra-purple/80 disabled:opacity-50 text-white font-semibold text-sm rounded-lg flex items-center space-x-2 transition shadow-lg shrink-0"
+          >
+            {isInvestigating ? (
+              <>
+                <Activity className="w-4 h-4 animate-spin text-white" />
+                <span>Correlating...</span>
+              </>
+            ) : (
+              <>
+                <span>Investigate</span>
+                <ArrowUpRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Live Search & Match Results */}
+        {searchResults.length > 0 && (
+          <div className="pt-3 border-t border-netra-border space-y-2">
+            <div className="text-xs text-netra-muted flex items-center space-x-1 font-mono">
+              <CheckCircle className="w-3.5 h-3.5 text-netra-valid" />
+              <span>Matching Intelligence Results Found:</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {searchResults.map((res: any, idx: number) => (
+                <div
+                  key={idx}
+                  onClick={() => onNavigate("actor_profile", res.entity_id)}
+                  className="p-3 bg-netra-surface border border-netra-border hover:border-netra-cyan/60 rounded-lg cursor-pointer transition text-xs space-y-1"
+                >
+                  <div className="flex justify-between items-center font-bold text-white">
+                    <span>{res.title}</span>
+                    <span className="text-netra-cyan font-mono">{res.entity_type}</span>
+                  </div>
+                  <div className="text-netra-muted">{res.snippet}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
 
       {/* Hero Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

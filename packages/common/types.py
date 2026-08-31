@@ -68,6 +68,28 @@ class EvidenceItem:
         effective_mult = max(0.0, min(1.0, self.source_reliability * self.credibility_multiplier))
         return base_llr * effective_mult
 
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert EvidenceItem into clean serializable JSON dictionary for API.
+        """
+        fam_str = self.family.value if hasattr(self.family, "value") else str(self.family)
+        return {
+            "id": self.id,
+            "feature_name": self.feature_name,
+            "family": fam_str,
+            "dependence_group": self.dependence_group,
+            "m_i": self.m_i,
+            "u_i": self.u_i,
+            "raw_llr": round(self.get_effective_llr(), 4),
+            "is_contradiction": self.is_contradiction,
+            "contradiction_weight": self.contradiction_weight,
+            "abstain": self.abstain,
+            "source_reliability": self.source_reliability,
+            "credibility_multiplier": self.credibility_multiplier,
+            "metadata": self.metadata,
+        }
+
+
 
 @dataclass
 class ItemContributionBreakdown:
