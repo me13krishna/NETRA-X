@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Users, Key, Wallet, Globe, Clock, ShieldCheck, GitMerge,
-  Server, ArrowLeft, ExternalLink, Hash, Check
+  Server, ArrowLeft, ExternalLink, Hash, Check, FileText
 } from "lucide-react";
 import { useToast } from "./StatusToasts";
 import { apiFetch } from "../lib/api";
@@ -12,12 +12,14 @@ interface ActorProfileProps {
   actorId?: string;
   onBack: () => void;
   onNavigate: (view: string, id?: string) => void;
+  onOpenReportModal?: () => void;
 }
 
 export const ActorProfile: React.FC<ActorProfileProps> = ({
   actorId,
   onBack,
-  onNavigate
+  onNavigate,
+  onOpenReportModal,
 }) => {
   const toast = useToast();
   const [actor, setActor] = useState<any>(null);
@@ -86,18 +88,29 @@ export const ActorProfile: React.FC<ActorProfileProps> = ({
           <div className="text-right space-y-2">
             <div className="text-xs text-netra-subtle font-mono">BASE CONFIDENCE</div>
             <div className="text-2xl font-bold text-netra-valid font-mono">{(actor.confidence * 100).toFixed(0)}%</div>
-            <button
-              onClick={() => {
-                const val = prompt("Enter new identifier value (Handle, PGP Key, Wallet, or Onion URL):");
-                if (val && val.trim()) {
-                  toast.push("ok", "Identifier attached", `${val.trim()} -> ${actor.primary_alias}`);
-                }
-              }}
-              className="px-3 py-1.5 bg-netra-purple/20 border border-netra-purple/40 hover:bg-netra-purple text-white text-xs font-mono rounded transition flex items-center space-x-1 ml-auto"
-            >
-              <Key className="w-3.5 h-3.5 text-netra-cyan" />
-              <span>+ Add Identifier</span>
-            </button>
+            <div className="flex items-center space-x-2 justify-end">
+              {onOpenReportModal && (
+                <button
+                  onClick={onOpenReportModal}
+                  className="px-3 py-1.5 bg-netra-cyan/20 border border-netra-cyan/40 hover:bg-netra-cyan/40 text-netra-cyan text-xs font-mono rounded transition flex items-center space-x-1"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Generate Dossier</span>
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  const val = prompt("Enter new identifier value (Handle, PGP Key, Wallet, or Onion URL):");
+                  if (val && val.trim()) {
+                    toast.push("ok", "Identifier attached", `${val.trim()} -> ${actor.primary_alias}`);
+                  }
+                }}
+                className="px-3 py-1.5 bg-netra-purple/20 border border-netra-purple/40 hover:bg-netra-purple text-white text-xs font-mono rounded transition flex items-center space-x-1"
+              >
+                <Key className="w-3.5 h-3.5 text-netra-cyan" />
+                <span>+ Add Identifier</span>
+              </button>
+            </div>
           </div>
         </div>
 

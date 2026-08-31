@@ -22,9 +22,10 @@ function StatValue({ value, loading }: { value: number; loading: boolean }) {
 
 interface CommandCenterProps {
   onNavigate: (view: string, targetId?: string) => void;
+  onOpenReportModal?: () => void;
 }
 
-export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
+export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate, onOpenReportModal }) => {
   const [actorsCount, setActorsCount] = useState(0);
   const [hypotheses, setHypotheses] = useState<any[]>([]);
   const [evidenceCount, setEvidenceCount] = useState(0);
@@ -120,7 +121,16 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate }) => {
             Real-time Threat Actor Footprints, Evidence Provenance & Attribution Queue
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-right flex items-center space-x-3">
+          {onOpenReportModal && (
+            <button
+              onClick={onOpenReportModal}
+              className="px-3 py-1.5 rounded-lg bg-netra-purple/20 border border-netra-purple/50 text-white text-xs font-mono hover:bg-netra-purple/40 transition flex items-center space-x-1.5 shadow"
+            >
+              <FileText className="w-3.5 h-3.5 text-netra-cyan" />
+              <span>Export Report</span>
+            </button>
+          )}
           <div className="text-xs text-netra-cyan font-mono bg-netra-surface px-3 py-1.5 rounded border border-netra-border">
             CALIBRATED CONFIDENCE AVG: <span className="text-white font-bold">{avgConfidence.toFixed(1)}%</span>
           </div>
