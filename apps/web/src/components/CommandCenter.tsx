@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Users, GitMerge, FileText, ShieldAlert, Cpu, Activity,
-  ArrowUpRight, Clock, AlertTriangle, CheckCircle, Database
+  ArrowUpRight, Clock, AlertTriangle, CheckCircle, Database, Globe
 } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import { useCountUp } from "../lib/useCountUp";
@@ -23,9 +23,10 @@ function StatValue({ value, loading }: { value: number; loading: boolean }) {
 interface CommandCenterProps {
   onNavigate: (view: string, targetId?: string) => void;
   onOpenReportModal?: () => void;
+  onOpenIngestionModal?: () => void;
 }
 
-export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate, onOpenReportModal }) => {
+export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate, onOpenReportModal, onOpenIngestionModal }) => {
   const [actorsCount, setActorsCount] = useState(0);
   const [hypotheses, setHypotheses] = useState<any[]>([]);
   const [evidenceCount, setEvidenceCount] = useState(0);
@@ -144,7 +145,19 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({ onNavigate, onOpen
             <ShieldAlert className="w-5 h-5 text-netra-purple animate-pulse" />
             <span>Start Threat Investigation</span>
           </div>
-          <span className="text-[11px] text-netra-cyan font-mono">STEP 1: ENTER SEED IDENTIFIER</span>
+
+          <div className="flex items-center space-x-2">
+            {onOpenIngestionModal && (
+              <button
+                onClick={onOpenIngestionModal}
+                className="px-3 py-1 rounded bg-netra-cyan/15 border border-netra-cyan/40 text-netra-cyan hover:bg-netra-cyan/25 font-mono text-xs transition flex items-center space-x-1"
+              >
+                <Globe className="w-3.5 h-3.5 text-netra-cyan animate-pulse" />
+                <span>Live .onion Crawler</span>
+              </button>
+            )}
+            <span className="text-[11px] text-netra-cyan font-mono">STEP 1: ENTER SEED IDENTIFIER</span>
+          </div>
         </div>
 
         {/* Identifier Type Selectors */}

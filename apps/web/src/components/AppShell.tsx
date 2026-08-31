@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import {
   ShieldAlert, LayoutDashboard, Users, GitMerge, FileText, Search,
-  Lock, Cpu, Activity, LogOut, FileSearch, Bot, CheckCircle2, ListTree
+  Lock, Cpu, Activity, LogOut, FileSearch, Bot, CheckCircle2, ListTree, Globe
 } from "lucide-react";
 
 interface AppShellProps {
@@ -13,6 +13,7 @@ interface AppShellProps {
   onLogout: () => void;
   onOpenCopilot: () => void;
   onOpenReportModal?: () => void;
+  onOpenIngestionModal?: () => void;
   children: React.ReactNode;
 }
 
@@ -23,6 +24,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   onLogout,
   onOpenCopilot,
   onOpenReportModal,
+  onOpenIngestionModal,
   children
 }) => {
   const navItems = [
@@ -82,12 +84,22 @@ export const AppShell: React.FC<AppShellProps> = ({
             <span><span className="live-dot">&#9679;</span> LEDGER: ONLINE (PROVENANCE VERIFIED)</span>
           </div>
 
+          {onOpenIngestionModal && (
+            <button
+              onClick={onOpenIngestionModal}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-netra-cyan/15 border border-netra-cyan/40 text-netra-cyan text-xs font-medium hover:bg-netra-cyan/25 transition shadow-sm"
+            >
+              <Globe className="w-4 h-4 text-netra-cyan animate-pulse" />
+              <span>Crawl .onion</span>
+            </button>
+          )}
+
           {onOpenReportModal && (
             <button
               onClick={onOpenReportModal}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-netra-cyan/15 border border-netra-cyan/40 text-netra-cyan text-xs font-medium hover:bg-netra-cyan/25 transition shadow-sm"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-netra-purple/20 border border-netra-purple/50 text-netra-purple text-xs font-medium hover:bg-netra-purple/30 transition shadow-sm"
             >
-              <FileText className="w-4 h-4 text-netra-cyan" />
+              <FileText className="w-4 h-4 text-netra-purple" />
               <span>Export Report</span>
             </button>
           )}
