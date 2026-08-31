@@ -14,12 +14,14 @@ import { CasesView } from "../components/CasesView";
 import { CopilotDrawer } from "../components/CopilotDrawer";
 import { CommandPalette } from "../components/CommandPalette";
 import { ToastProvider } from "../components/StatusToasts";
+import { ReportGeneratorModal } from "../components/ReportGeneratorModal";
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [currentView, setCurrentView] = useState("command_center");
   const [selectedTargetId, setSelectedTargetId] = useState<string | undefined>(undefined);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -79,17 +81,24 @@ export default function Home() {
         userEmail={user.email}
         onLogout={handleLogout}
         onOpenCopilot={() => setIsCopilotOpen(true)}
+        onOpenReportModal={() => setIsReportModalOpen(true)}
       >
       {/* Keyed on the view id so the enter animation replays on every module
           change; without the key React reuses the node and nothing animates. */}
       <div key={currentView} className="view-enter">
-      {currentView === "command_center" && <CommandCenter onNavigate={handleNavigate} />}
+      {currentView === "command_center" && (
+        <CommandCenter
+          onNavigate={handleNavigate}
+          onOpenReportModal={() => setIsReportModalOpen(true)}
+        />
+      )}
       {currentView === "cases" && <CasesView />}
       {currentView === "actors" && (
         <ActorProfile
           actorId={selectedTargetId}
           onBack={() => setCurrentView("command_center")}
           onNavigate={handleNavigate}
+          onOpenReportModal={() => setIsReportModalOpen(true)}
         />
       )}
       {currentView === "attribution_lab" && (
@@ -105,7 +114,13 @@ export default function Home() {
       </div>
 
         <CopilotDrawer isOpen={isCopilotOpen} onClose={() => setIsCopilotOpen(false)} />
+        <ReportGeneratorModal
+          isOpen={isReportModalOpen}
+          onClose={() => setIsReportModalOpen(false)}
+          initialHypothesisId={selectedTargetId}
+        />
       </AppShell>
     </ToastProvider>
   );
 }
+

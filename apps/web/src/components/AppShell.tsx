@@ -12,6 +12,7 @@ interface AppShellProps {
   userEmail: string;
   onLogout: () => void;
   onOpenCopilot: () => void;
+  onOpenReportModal?: () => void;
   children: React.ReactNode;
 }
 
@@ -21,6 +22,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   userEmail,
   onLogout,
   onOpenCopilot,
+  onOpenReportModal,
   children
 }) => {
   const navItems = [
@@ -74,11 +76,21 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 text-xs font-mono text-netra-valid bg-netra-valid/10 px-2.5 py-1 rounded border border-netra-valid/30">
             <Activity className="w-3.5 h-3.5 animate-pulse" />
             <span><span className="live-dot">&#9679;</span> LEDGER: ONLINE (PROVENANCE VERIFIED)</span>
           </div>
+
+          {onOpenReportModal && (
+            <button
+              onClick={onOpenReportModal}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-netra-cyan/15 border border-netra-cyan/40 text-netra-cyan text-xs font-medium hover:bg-netra-cyan/25 transition shadow-sm"
+            >
+              <FileText className="w-4 h-4 text-netra-cyan" />
+              <span>Export Report</span>
+            </button>
+          )}
 
           <button
             onClick={onOpenCopilot}
@@ -87,6 +99,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             <Bot className="w-4 h-4" />
             <span>AI Copilot</span>
           </button>
+
 
           {/* A command palette nobody knows about is dead weight, so the
               shortcut is advertised. Clicking dispatches the same keystroke the
