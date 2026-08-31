@@ -1,10 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { FileText, Hash, ExternalLink, Filter, Trash2 } from "lucide-react";
+import { FileText, Hash, ExternalLink, Filter, Trash2, Globe, Plus } from "lucide-react";
 import { apiFetch } from "../lib/api";
 
-export const EvidenceVault: React.FC = () => {
+interface EvidenceVaultProps {
+  onOpenIngestionModal?: () => void;
+}
+
+export const EvidenceVault: React.FC<EvidenceVaultProps> = ({ onOpenIngestionModal }) => {
   const [evidenceList, setEvidenceList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -71,6 +75,16 @@ export const EvidenceVault: React.FC = () => {
             Authoritative Ledger of Extracted Artifacts, Source URIs & SHA-256 Hashes
           </p>
         </div>
+
+        {onOpenIngestionModal && (
+          <button
+            onClick={onOpenIngestionModal}
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-netra-cyan text-netra-bg hover:bg-netra-cyan/90 font-bold text-xs shadow-lg transition"
+          >
+            <Globe className="w-4 h-4" />
+            <span>Ingest New Darknet Payload</span>
+          </button>
+        )}
       </div>
 
       {error && (

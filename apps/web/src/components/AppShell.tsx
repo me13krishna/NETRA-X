@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import {
   ShieldAlert, LayoutDashboard, Users, GitMerge, FileText, Search,
-  Lock, Cpu, Activity, LogOut, FileSearch, Bot, CheckCircle2, ListTree
+  Lock, Cpu, Activity, LogOut, FileSearch, Bot, CheckCircle2, ListTree, Globe, Plus
 } from "lucide-react";
 
 interface AppShellProps {
@@ -13,6 +13,7 @@ interface AppShellProps {
   onLogout: () => void;
   onOpenCopilot: () => void;
   onOpenReportModal?: () => void;
+  onOpenIngestionModal?: () => void;
   children: React.ReactNode;
 }
 
@@ -23,41 +24,49 @@ export const AppShell: React.FC<AppShellProps> = ({
   onLogout,
   onOpenCopilot,
   onOpenReportModal,
+  onOpenIngestionModal,
   children
 }) => {
-  const navItems = [
-    { id: "command_center", label: "Command Center", icon: LayoutDashboard },
-    { id: "cases", label: "Investigations", icon: FileSearch },
-    { id: "actors", label: "Actor Explorer", icon: Users },
-    { id: "attribution_lab", label: "Attribution Lab", icon: GitMerge },
-    { id: "graph_explorer", label: "Intelligence Graph", icon: ListTree },
-    { id: "evidence_vault", label: "Evidence Vault", icon: FileText },
-    { id: "audit_log", label: "Audit Chain", icon: Lock },
+  const navSections = [
+    {
+      category: "Threat Operations",
+      items: [
+        { id: "command_center", label: "Command Center", icon: LayoutDashboard },
+        { id: "cases", label: "Investigations", icon: FileSearch },
+        { id: "actors", label: "Actor Explorer", icon: Users },
+      ],
+    },
+    {
+      category: "Analytics & Intelligence",
+      items: [
+        { id: "attribution_lab", label: "Attribution Lab", icon: GitMerge },
+        { id: "graph_explorer", label: "Intelligence Graph", icon: ListTree },
+      ],
+    },
+    {
+      category: "Forensic Ledger",
+      items: [
+        { id: "evidence_vault", label: "Evidence Vault", icon: FileText },
+        { id: "audit_log", label: "Audit Chain", icon: Lock },
+      ],
+    },
   ];
 
   return (
     <div className="min-h-screen bg-netra-bg text-netra-text flex flex-col font-sans">
-      {/* Top Bar */}
-      <header className="h-[72px] border-b border-netra-border bg-netra-surface px-4 flex items-center justify-between sticky top-0 z-40">
+      {/* Sleek Minimal Top Header Bar */}
+      <header className="h-[64px] border-b border-netra-border bg-netra-surface/90 backdrop-blur-md px-5 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center space-x-3">
-          {/* The mark is served pre-trimmed and squared at 128px, so it fills
-              this slot without a solid backing plate behind it -- the artwork
-              carries its own silhouette against the dark ground. */}
           <img
             src="/netra-x-mark.png"
-            // Decorative: the wordmark beside it already carries the name, so
-            // announcing it twice is noise for a screen reader.
             alt=""
             aria-hidden="true"
-            width={64}
-            height={64}
-            className="w-16 h-16 object-contain select-none"
+            width={48}
+            height={48}
+            className="w-11 h-11 object-contain select-none"
             draggable={false}
           />
-          <div>
-            {/* Wordmark replaces the typeset name. Exported at 4x its display
-                height so it stays crisp on retina; width is left to auto so the
-                artwork's own aspect ratio drives it. */}
+          <div className="flex items-center space-x-2">
             <span
               className="glitch-img align-middle"
               style={{ ["--glitch-src" as string]: "url(/netra-x-wordmark.png)" } as React.CSSProperties}
@@ -65,46 +74,35 @@ export const AppShell: React.FC<AppShellProps> = ({
               <img
                 src="/netra-x-wordmark.png"
                 alt="NETRA-X"
-                height={26}
-                className="h-[26px] w-auto block select-none"
+                height={22}
+                className="h-[22px] w-auto block select-none"
                 draggable={false}
               />
             </span>
-            <span className="ml-2 text-xs text-netra-cyan font-mono bg-netra-cyan/10 px-2 py-0.5 rounded border border-netra-cyan/30">
+            <span className="text-[10px] text-netra-cyan font-mono bg-netra-cyan/10 px-2 py-0.5 rounded border border-netra-cyan/30">
               v0.1 MVP
             </span>
           </div>
         </div>
 
+        {/* Top Header Controls */}
         <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 text-xs font-mono text-netra-valid bg-netra-valid/10 px-2.5 py-1 rounded border border-netra-valid/30">
-            <Activity className="w-3.5 h-3.5 animate-pulse" />
-            <span><span className="live-dot">&#9679;</span> LEDGER: ONLINE (PROVENANCE VERIFIED)</span>
+          {/* Status Badge */}
+          <div className="hidden sm:flex items-center space-x-2 text-[11px] font-mono text-netra-valid bg-netra-valid/10 px-2.5 py-1 rounded-full border border-netra-valid/30">
+            <Activity className="w-3.5 h-3.5 animate-pulse text-netra-valid" />
+            <span>LEDGER: ONLINE</span>
           </div>
 
-          {onOpenReportModal && (
-            <button
-              onClick={onOpenReportModal}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-netra-cyan/15 border border-netra-cyan/40 text-netra-cyan text-xs font-medium hover:bg-netra-cyan/25 transition shadow-sm"
-            >
-              <FileText className="w-4 h-4 text-netra-cyan" />
-              <span>Export Report</span>
-            </button>
-          )}
-
+          {/* AI Copilot Drawer Trigger */}
           <button
             onClick={onOpenCopilot}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-netra-purple/20 border border-netra-purple/50 text-netra-purple text-xs font-medium hover:bg-netra-purple/30 transition"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-netra-purple/20 border border-netra-purple/50 text-white text-xs font-semibold hover:border-netra-purple hover:bg-netra-purple/30 transition shadow-sm"
           >
-            <Bot className="w-4 h-4" />
+            <Bot className="w-3.5 h-3.5 text-netra-cyan" />
             <span>AI Copilot</span>
           </button>
 
-
-          {/* A command palette nobody knows about is dead weight, so the
-              shortcut is advertised. Clicking dispatches the same keystroke the
-              palette listens for, rather than lifting its open state up here
-              just to satisfy one button. */}
+          {/* Command Palette Trigger */}
           <button
             onClick={() =>
               window.dispatchEvent(
@@ -113,19 +111,18 @@ export const AppShell: React.FC<AppShellProps> = ({
             }
             title="Command palette"
             aria-label="Open command palette"
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 border border-netra-border bg-netra-surface text-netra-subtle hover:text-netra-text hover:border-netra-purple/50 transition-colors font-mono text-[10px]"
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 border border-netra-border bg-netra-surface text-netra-subtle hover:text-netra-text hover:border-netra-cyan/40 transition-colors font-mono text-[10px] rounded-lg"
           >
             <Search className="w-3 h-3" />
-            <span className="tracking-telemetry">CTRL</span>
-            <span className="opacity-60">+</span>
-            <span className="tracking-telemetry">K</span>
+            <span>CTRL+K</span>
           </button>
 
+          {/* User Profile & Logout */}
           <div className="text-xs text-netra-muted border-l border-netra-border pl-3 flex items-center space-x-2">
-            <span className="font-mono">{userEmail}</span>
+            <span className="font-mono text-white text-[11px]">{userEmail}</span>
             <button
               onClick={onLogout}
-              className="text-netra-subtle hover:text-netra-red transition ml-2"
+              className="p-1 text-netra-subtle hover:text-netra-hazard transition rounded"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
@@ -134,45 +131,64 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
       </header>
 
+      {/* Body Container */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-60 border-r border-netra-border bg-netra-card p-3 flex flex-col justify-between shrink-0">
-          <nav className="space-y-1">
-            <div className="px-3 py-2 text-[10px] font-mono text-netra-subtle tracking-widest uppercase">
-              Core Modules
-            </div>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => onNavigate(item.id)}
-                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-medium transition ${
-                    isActive
-                      ? "bg-netra-purple/20 text-white border border-netra-purple/50 purple-glow"
-                      : "text-netra-muted hover:bg-netra-hover hover:text-white"
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? "text-netra-purple" : "text-netra-subtle"}`} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+        {/* Left Sidebar Navigation */}
+        <aside className="w-60 border-r border-netra-border bg-netra-surface/80 p-3 flex flex-col justify-between shrink-0 font-sans">
+          <div className="space-y-5">
+            {/* Primary Action Button: Darknet Ingestion Launcher */}
+            {onOpenIngestionModal && (
+              <button
+                onClick={onOpenIngestionModal}
+                className="w-full py-2.5 px-3 rounded-xl bg-netra-cyan text-netra-bg font-bold text-xs hover:bg-netra-cyan/90 transition shadow-lg flex items-center justify-center space-x-2 uppercase tracking-wider"
+              >
+                <Globe className="w-4 h-4 text-netra-bg animate-pulse" />
+                <span>+ Crawl .onion Payload</span>
+              </button>
+            )}
 
-          <div className="bg-netra-surface border border-netra-border p-3 rounded-lg text-[11px] space-y-1">
-            <div className="text-netra-cyan font-semibold flex items-center space-x-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+            <nav className="space-y-4">
+              {navSections.map((sec, idx) => (
+                <div key={idx} className="space-y-1">
+                  <div className="px-3 py-1 text-[10px] font-mono text-netra-subtle tracking-widest uppercase font-bold">
+                    {sec.category}
+                  </div>
+                  {sec.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = currentView === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => onNavigate(item.id)}
+                        className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
+                          isActive
+                            ? "bg-netra-cyan/15 text-white border border-netra-cyan/40 font-semibold shadow-sm"
+                            : "text-netra-muted hover:bg-netra-surface hover:text-white"
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 ${isActive ? "text-netra-cyan" : "text-netra-subtle"}`} />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </nav>
+          </div>
+
+          {/* Footer Ledger Notice */}
+          <div className="bg-netra-card border border-netra-border p-3 rounded-xl text-[11px] space-y-1">
+            <div className="text-netra-valid font-semibold flex items-center space-x-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-netra-valid" />
               <span>Evidence Ledger</span>
             </div>
-            <p className="text-netra-subtle text-[10px] leading-tight">
+            <p className="text-netra-muted text-[10px] leading-relaxed">
               Append-only SHA-256 audit log. AI assists; analyst decides.
             </p>
           </div>
         </aside>
 
-        {/* Main Workspace Area */}
+        {/* Main View Area */}
         <main className="flex-1 overflow-y-auto p-6 bg-netra-bg">
           {children}
         </main>

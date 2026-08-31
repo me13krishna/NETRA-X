@@ -9,7 +9,7 @@ import os
 import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Query, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Response, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select, or_
@@ -1304,9 +1304,13 @@ def verify_audit_chain_endpoint(db: Session = Depends(get_db), current_user: Use
 
 
 # --- CONSTRAINED AI COPILOT ---
-@app.post("/api/v1/copilot/query")
-def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db),
-                  current_user: User = Depends(get_current_user)):
+@app.api_route("/api/v1/copilot/query", methods=["GET", "POST"])
+def query_copilot(
+    query_text: Optional[str] = Query(None),
+    payload: Optional[Dict[str, Any]] = Body(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Investigation assistant, answered from the authoritative ledger.
 
     Was six hardcoded paragraphs selected by keyword: asking about any actor
@@ -1323,9 +1327,17 @@ def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db),
     """
     from packages.copilot import ask
 
-    result = ask(db, query_text)
+    # Accept the question from a query param or a JSON body, so the drawer can
+    # POST a payload without the caller having to URL-encode it.
+    q_str = query_text
+    if not q_str and payload:
+        q_str = payload.get("query_text") or payload.get("query") or payload.get("prompt")
+
+    # No default question. Substituting one would answer something the analyst
+    # did not ask; an empty query is refused, like any other unanswerable input.
+    result = ask(db, q_str or "")
     return {
-        "query": query_text,
+        "query": q_str,
         "response": result["answer"],
         "answered": result["answered"],
         "engine": result.get("engine", "deterministic"),
@@ -1343,6 +1355,7 @@ def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db),
     }
 
 
+# --- ADVANCED ATTRIBUTION & ML ENDPOINTS ---
 @app.post("/api/v1/stylometry/neural")
 def evaluate_neural_stylometry(
     text_a: str = Query(...),
