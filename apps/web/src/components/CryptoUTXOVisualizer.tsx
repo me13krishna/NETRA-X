@@ -1,236 +1,200 @@
 "use client";
 
-import React, { useState } from "react";
-import {
-  Wallet, ShieldAlert, ArrowRight, RefreshCw, GitCommit, AlertTriangle,
-  CheckCircle, Hash, ExternalLink, Zap, Layers, DollarSign
-} from "lucide-react";
+/**
+ * Wallet cluster view.
+ *
+ * This component previously rendered a four-step "mixer hop" chain -- seed
+ * wallet, co-spend cluster, ChipMixer pool, exchange deposit -- with amounts
+ * in BTC and transaction hashes like "0x89f1a2b3...4c5d". None of it existed.
+ * The hops were a hardcoded array, the hashes were typed by hand, and the
+ * same four steps rendered for every actor. It also carried a "local fallback
+ * mock" that fabricated an LLR of 3.85 whenever the API call failed, so a
+ * broken backend looked like a successful attribution.
+ *
+ * We do not hold chain transaction data, so no hop chain can be drawn
+ * honestly. What the ledger does hold is which addresses belong to which
+ * persona and which co-spending cluster each sits in -- and therefore which
+ * differently-named personas control addresses in the same cluster. That
+ * co-ownership was what the fake diagram was gesturing at, and it is a
+ * stronger finding than a decorative flow chart, because it is real.
+ */
+
+import React, { useEffect, useState } from "react";
+import { Wallet, Link2, AlertTriangle, Layers, Users, Loader2 } from "lucide-react";
 import { apiFetch } from "../lib/api";
 
-export const CryptoUTXOVisualizer: React.FC<{ initialWallet?: string }> = ({ initialWallet }) => {
-  const [addressA, setAddressA] = useState(initialWallet || "bc1q9v83k0q72m81l92x04a8f");
-  const [addressB, setAddressB] = useState("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+interface CoOwner {
+  actor_id: string;
+  actor: string;
+  address: string;
+}
+
+interface WalletRow {
+  address: string;
+  chain: string;
+  cluster_id: string | null;
+  co_owners: CoOwner[];
+}
+
+interface WalletResponse {
+  actor_id: string;
+  actor: string;
+  wallets: WalletRow[];
+  wallet_count: number;
+  clustered_count: number;
+  shared_cluster_count: number;
+}
+
+export const CryptoUTXOVisualizer: React.FC<{ actorId?: string }> = ({ actorId }) => {
+  const [data, setData] = useState<WalletResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const sampleHops = [
-    {
-      step: 1,
-      type: "SEED_INPUT",
-      address: addressA || "bc1q9v83k0q72m81l92x04a8f",
-      label: "Suspect Wallet A (Seed)",
-      amount: "14.8200 BTC",
-      txHash: "0x89f1a2b3...4c5d",
-      risk: "SUSPECT",
-      color: "text-netra-cyan border-netra-cyan/40 bg-netra-cyan/10",
-    },
-    {
-      step: 2,
-      type: "CO_SPEND_CLUSTER",
-      address: "bc1q_co_spend_cluster_991",
-      label: "UTXO Co-Spending Multi-Input",
-      amount: "14.8195 BTC",
-      txHash: "0x3a4b5c6d...7e8f",
-      risk: "MATCHED_CLUSTER",
-      color: "text-netra-purple border-netra-purple/40 bg-netra-purple/10",
-    },
-    {
-      step: 3,
-      type: "MIXER_HOP",
-      address: "ChipMixer_Pool_0x4A8F",
-      label: "Darknet Crypto Mixer / Peeling Chain",
-      amount: "12.5000 BTC",
-      txHash: "0x11223344...5566",
-      risk: "HIGH_RISK_MIXER",
-      color: "text-netra-hazard border-netra-hazard/40 bg-netra-hazard/10",
-    },
-    {
-      step: 4,
-      type: "DESTINATION",
-      address: addressB || "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-      label: "Exchange Deposit / Wallet B",
-      amount: "12.4980 BTC",
-      txHash: "0x77889900...aabb",
-      risk: "ATTRIBUTED",
-      color: "text-netra-valid border-netra-valid/40 bg-netra-valid/10",
-    },
-  ];
-
-  const handleEvaluate = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setLoading(true);
-
-    try {
-      const res = await apiFetch<any>(
-        `/api/v1/financial/utxo-clusters?address_a=${encodeURIComponent(addressA)}&address_b=${encodeURIComponent(addressB)}`,
-        { method: "POST" }
-      );
-      setResult(res);
-    } catch (err: any) {
-      console.error("Failed evaluating UTXO clusters", err);
-      // Local fallback mock
-      setResult({
-        evidence_item: {
-          family: "FINANCIAL_UTXO",
-          llr: 3.85,
-          confidence: 0.942,
-          dependence_group: "DEP_FINANCIAL_01",
-        },
-      });
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!actorId) {
+      setData(null);
+      return;
     }
-  };
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    apiFetch<WalletResponse>(`/api/v1/actors/${actorId}/wallets`)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch((err: any) => {
+        // Deliberately no mock fallback. A failed lookup must read as a failed
+        // lookup, not as a finding.
+        if (!cancelled) setError(err?.message || "Failed to load wallet data");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actorId]);
 
   return (
-    <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-6 glass-panel font-sans">
-      {/* Header Banner */}
-      <div className="flex justify-between items-center border-b border-netra-border pb-4">
+    <div className="bg-netra-surface border border-netra-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-netra-border">
         <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-lg bg-netra-purple/20 border border-netra-purple/40">
-            <Wallet className="w-6 h-6 text-netra-purple" />
+          <div className="p-2 bg-netra-purple/20 text-netra-purple rounded-lg border border-netra-purple/40">
+            <Wallet className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white tracking-wide flex items-center space-x-2">
-              <span>Crypto UTXO Cluster & Mixer Hop Visualizer</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-netra-cyan/10 text-netra-cyan border border-netra-cyan/30">
-                BLOCKCHAIN FORENSICS
-              </span>
-            </h2>
-            <p className="text-xs text-netra-muted mt-0.5">
-              Heuristic Co-Spending Analysis, Peeling Chain Tracking & Crypto Mixer Detection
+            <h3 className="text-sm font-semibold text-netra-text tracking-wide">
+              WALLET CLUSTERS
+            </h3>
+            <p className="text-[11px] text-netra-muted font-mono">
+              co-spending clusters from the evidence ledger
             </p>
           </div>
         </div>
-
-        <button
-          onClick={() => handleEvaluate()}
-          disabled={loading}
-          className="px-4 py-2 bg-netra-purple hover:bg-netra-purple/80 text-white font-semibold text-xs rounded-lg flex items-center space-x-2 transition shadow-lg disabled:opacity-50"
-        >
-          {loading ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin text-white" />
-              <span>Analyzing UTXOs...</span>
-            </>
-          ) : (
-            <>
-              <Zap className="w-4 h-4 text-netra-cyan" />
-              <span>Run UTXO Cluster Analysis</span>
-            </>
-          )}
-        </button>
+        {data && (
+          <div className="flex items-center space-x-4 text-[11px] font-mono text-netra-muted">
+            <span>{data.wallet_count} addresses</span>
+            <span>{data.clustered_count} clustered</span>
+            {data.shared_cluster_count > 0 && (
+              <span className="text-netra-hazard font-semibold">
+                {data.shared_cluster_count} shared
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Input Address Form */}
-      <form onSubmit={handleEvaluate} className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
-        <div>
-          <label className="text-netra-subtle block mb-1">Suspect Wallet Address (A):</label>
-          <input
-            type="text"
-            value={addressA}
-            onChange={(e) => setAddressA(e.target.value)}
-            placeholder="e.g. bc1q9v83k0..."
-            className="w-full bg-netra-surface border border-netra-border focus:border-netra-purple rounded-lg p-2.5 text-white font-mono text-xs focus:outline-none"
-          />
-        </div>
+      <div className="p-4">
+        {loading && (
+          <div className="flex items-center space-x-2 text-netra-muted text-xs font-mono py-6 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Reading wallet ledger...</span>
+          </div>
+        )}
 
-        <div>
-          <label className="text-netra-subtle block mb-1">Target / Destination Wallet Address (B):</label>
-          <input
-            type="text"
-            value={addressB}
-            onChange={(e) => setAddressB(e.target.value)}
-            placeholder="e.g. 1A1zP1eP5QGefi..."
-            className="w-full bg-netra-surface border border-netra-border focus:border-netra-purple rounded-lg p-2.5 text-white font-mono text-xs focus:outline-none"
-          />
-        </div>
-      </form>
+        {error && (
+          <div className="flex items-start space-x-2 text-netra-red text-xs font-mono py-4">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
-      {/* Visual Transaction Hop Node Flowchart */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-center text-xs font-mono text-netra-cyan border-b border-netra-border/60 pb-2 uppercase tracking-wider">
-          <span className="flex items-center space-x-1.5">
-            <Layers className="w-4 h-4 text-netra-cyan" />
-            <span>Multi-Hop UTXO Co-Spending & Mixer Flow Topology</span>
-          </span>
-          <span className="text-netra-valid text-[11px]">CALIBRATED MATCH: +3.85 LLR</span>
-        </div>
+        {!loading && !error && data && data.wallets.length === 0 && (
+          <p className="text-xs text-netra-muted font-mono py-6 text-center">
+            No wallet addresses are recorded against {data.actor}.
+          </p>
+        )}
 
-        {/* Node Pipeline Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-mono">
-          {sampleHops.map((hop, idx) => (
-            <div key={hop.step} className="relative group">
-              <div className={`p-3.5 rounded-xl border ${hop.color} transition space-y-2 h-full flex flex-col justify-between shadow-lg`}>
-                <div>
-                  <div className="flex justify-between items-center text-[10px] font-bold border-b border-white/10 pb-1.5">
-                    <span>HOP #{hop.step}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-black/40 text-white">{hop.risk}</span>
+        {!loading && !error && data && data.wallets.length > 0 && (
+          <div className="space-y-3">
+            {data.wallets.map((w) => {
+              const shared = w.co_owners.length > 0;
+              return (
+                <div
+                  key={w.address}
+                  className={`border rounded-lg p-3 ${
+                    shared
+                      ? "border-netra-hazard/50 bg-netra-hazard/5"
+                      : "border-netra-border bg-netra-bg/40"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-netra-text break-all">
+                        {w.address}
+                      </p>
+                      <div className="flex items-center space-x-3 mt-1 text-[11px] font-mono text-netra-muted">
+                        <span className="px-1.5 py-0.5 border border-netra-border rounded">
+                          {w.chain}
+                        </span>
+                        {w.cluster_id ? (
+                          <span className="flex items-center space-x-1">
+                            <Layers className="w-3 h-3" />
+                            <span>{w.cluster_id}</span>
+                          </span>
+                        ) : (
+                          <span className="italic">unclustered</span>
+                        )}
+                      </div>
+                    </div>
+                    {shared && (
+                      <span className="flex items-center space-x-1 text-[11px] font-mono text-netra-hazard shrink-0">
+                        <Users className="w-3 h-3" />
+                        <span>{w.co_owners.length} co-owner{w.co_owners.length > 1 ? "s" : ""}</span>
+                      </span>
+                    )}
                   </div>
 
-                  <div className="mt-2 space-y-1">
-                    <div className="text-xs font-bold text-white tracking-tight">{hop.label}</div>
-                    <div className="text-[11px] text-white/80 break-all font-bold">{hop.address}</div>
-                  </div>
+                  {shared && (
+                    <div className="mt-3 pt-3 border-t border-netra-hazard/20 space-y-1.5">
+                      <p className="text-[11px] text-netra-muted font-mono">
+                        Same cluster, different persona:
+                      </p>
+                      {w.co_owners.map((c) => (
+                        <div
+                          key={c.actor_id + c.address}
+                          className="flex items-center space-x-2 text-[11px] font-mono"
+                        >
+                          <Link2 className="w-3 h-3 text-netra-hazard shrink-0" />
+                          <span className="text-netra-text font-semibold">{c.actor}</span>
+                          <span className="text-netra-muted break-all">{c.address}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              );
+            })}
+          </div>
+        )}
 
-                <div className="pt-2 border-t border-white/10 text-[10px] space-y-1 text-white/70">
-                  <div className="flex justify-between">
-                    <span>Tx Volume:</span>
-                    <span className="text-white font-bold">{hop.amount}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Tx Hash:</span>
-                    <span className="text-netra-cyan">{hop.txHash}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Arrow Connector */}
-              {idx < sampleHops.length - 1 && (
-                <div className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 p-1 rounded-full bg-netra-card border border-netra-border text-netra-cyan">
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Cluster Analysis Matrix Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs">
-        <div className="bg-netra-surface border border-netra-border rounded-xl p-4 space-y-2">
-          <div className="flex justify-between items-center text-netra-subtle text-[11px]">
-            <span>CO-SPENDING HEURISTIC</span>
-            <CheckCircle className="w-4 h-4 text-netra-valid" />
-          </div>
-          <div className="text-lg font-bold text-white">Multi-Input Match</div>
-          <div className="text-[11px] text-netra-muted">
-            Wallets co-signed 2 transactions simultaneously (Shared Private Key Ownership).
-          </div>
-        </div>
-
-        <div className="bg-netra-surface border border-netra-border rounded-xl p-4 space-y-2">
-          <div className="flex justify-between items-center text-netra-subtle text-[11px]">
-            <span>MIXER PATTERN DETECTED</span>
-            <AlertTriangle className="w-4 h-4 text-netra-hazard" />
-          </div>
-          <div className="text-lg font-bold text-netra-hazard">ChipMixer / Tornado</div>
-          <div className="text-[11px] text-netra-muted">
-            Peeling chain with equal-sized output pools routed to obscure deposit addresses.
-          </div>
-        </div>
-
-        <div className="bg-netra-surface border border-netra-border rounded-xl p-4 space-y-2">
-          <div className="flex justify-between items-center text-netra-subtle text-[11px]">
-            <span>CALIBRATED EVIDENCE SCORE</span>
-            <ShieldAlert className="w-4 h-4 text-netra-cyan" />
-          </div>
-          <div className="text-lg font-bold text-netra-cyan">+3.85 LLR (P=94.2%)</div>
-          <div className="text-[11px] text-netra-valid">
-            High Confidence Attribution • Immutable SHA-256 Provenance Hash Recorded
-          </div>
-        </div>
+        {!actorId && !loading && (
+          <p className="text-xs text-netra-muted font-mono py-6 text-center">
+            Select an actor to view their wallet clusters.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -414,13 +414,126 @@ def get_actor_graph(id: str, db: Session = Depends(get_db), user: User = Depends
 
 @app.get("/api/v1/actors/{id}/timeline")
 def get_actor_timeline(id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    events = [
-        {"id": "ev_01", "timestamp": "2026-06-01T12:00:00Z", "event_type": "First Seen Forum Post", "source": "DarkForums", "detail": "Posted PGP Key Fingerprint 4A8F912C..."},
-        {"id": "ev_02", "timestamp": "2026-07-15T14:30:00Z", "event_type": "BTC Co-Spending Transaction", "source": "Blockchain", "detail": "Wallet cluster transaction to bc1qxy2k..."},
-        {"id": "ev_03", "timestamp": "2026-08-10T09:15:00Z", "event_type": "Onion Infrastructure Scan", "source": "Onion Probe", "detail": "Favicon mmh3 hash -1598234912 matched clearnet IP 185.220.101.5"},
-        {"id": "ev_04", "timestamp": "2026-08-20T18:45:00Z", "event_type": "Market Migration Observed", "source": "EmpireX", "detail": "New account Vortex99 active with identical stylometry & PGP key"}
-    ]
-    return {"actor_id": id, "timeline": events}
+    """Observed activity for one actor, read from the evidence ledger.
+
+    This returned four hardcoded events -- the same PGP fingerprint, the same
+    wallet, the same favicon hash -- for every actor requested, including ones
+    that do not exist. The dates were in the future. Nothing here may be a
+    literal: an analyst reading a timeline is reading a claim about when
+    something was observed, and that claim has to come from a row.
+    """
+    from packages.copilot import tools
+
+    actor = db.query(Actor).filter_by(id=id).first()
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found")
+
+    events = []
+    for row in tools.get_actor_evidence(db, id, limit=40):
+        ev = db.query(Evidence).filter_by(id=row["evidence_id"]).first()
+        if ev is None:
+            continue
+        events.append({
+            "id": ev.id,
+            "timestamp": ev.created_at.isoformat() if ev.created_at else None,
+            "event_type": row["extraction_method"],
+            "family": row["family"],
+            "source": ev.source_uri,
+            "detail": ev.value,
+            "contribution": row["contribution"],
+            "is_contradiction": row["is_contradiction"],
+            "artifact_sha256": row["artifact_sha256"],
+        })
+
+    events.sort(key=lambda e: e["timestamp"] or "")
+    return {
+        "actor_id": id,
+        "actor": actor.primary_alias,
+        "last_seen": actor.last_seen.isoformat() if actor.last_seen else None,
+        "timeline": events,
+        "count": len(events),
+    }
+
+
+@app.get("/api/v1/config/engine")
+def get_engine_config(user: User = Depends(get_current_user)):
+    """Live engine constants, for a UI that must not hardcode them.
+
+    The attribution view printed "DISCOUNT FACTOR lambda = 0.25" and
+    "Postgres Source of Truth" as static text. The first silently becomes
+    wrong the moment anyone retunes the engine; the second was never true in
+    this deployment, which runs SQLite. A screen that explains a scoring
+    decision cannot describe the scorer from memory.
+    """
+    from packages.attribution.fusion import LLRFusionEngine, load_mu_table
+    from packages.common.types import FAMILY_CAPS
+    from apps.api.database.session import DATABASE_URL_SYNC
+
+    mu = load_mu_table()
+    backend = "PostgreSQL" if "postgres" in DATABASE_URL_SYNC else "SQLite"
+
+    return {
+        "lambda_discount": LLRFusionEngine().lambda_discount,
+        "family_caps": {k.value: v for k, v in FAMILY_CAPS.items()},
+        "feature_count": len(mu.get("features", {})),
+        "contradictions": {
+            k: v.get("contradiction_weight") for k, v in mu.get("contradictions", {}).items()
+        },
+        "thresholds": {"high_confidence": 0.85, "low_confidence": 0.50},
+        "storage_backend": backend,
+        "model_version": "v1.0-LLR",
+    }
+
+
+@app.get("/api/v1/actors/{id}/wallets")
+def get_actor_wallets(id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Wallets held by this actor and the co-owners of each cluster.
+
+    The UI previously drew a mixer-hop diagram from four invented transaction
+    hashes. We do not hold chain transaction data, so this returns what the
+    ledger actually knows -- addresses, chains, cluster membership, and which
+    other personas control an address in the same cluster. That co-ownership
+    is the finding the diagram was pretending to show.
+    """
+    wallets = db.query(Wallet).filter_by(actor_id=id).all()
+    actor = db.query(Actor).filter_by(id=id).first()
+    if actor is None:
+        raise HTTPException(status_code=404, detail="Actor not found")
+
+    out = []
+    for w in wallets:
+        co_owners = []
+        if w.cluster_id:
+            siblings = db.query(Wallet).filter(
+                Wallet.cluster_id == w.cluster_id, Wallet.actor_id != id).all()
+            seen = set()
+            for sib in siblings:
+                if sib.actor_id in seen:
+                    continue
+                seen.add(sib.actor_id)
+                other = db.query(Actor).filter_by(id=sib.actor_id).first()
+                if other is not None:
+                    co_owners.append({
+                        "actor_id": other.id,
+                        "actor": other.primary_alias,
+                        "address": sib.address,
+                    })
+        out.append({
+            "address": w.address,
+            "chain": w.chain,
+            "cluster_id": w.cluster_id,
+            "co_owners": co_owners,
+        })
+
+    clustered = [w for w in out if w["cluster_id"]]
+    return {
+        "actor_id": id,
+        "actor": actor.primary_alias,
+        "wallets": out,
+        "wallet_count": len(out),
+        "clustered_count": len(clustered),
+        "shared_cluster_count": len([w for w in clustered if w["co_owners"]]),
+    }
 
 
 # --- EVIDENCE LEDGER ENDPOINTS ---
@@ -1108,69 +1221,44 @@ def verify_audit_chain_endpoint(db: Session = Depends(get_db), current_user: Use
 
 # --- CONSTRAINED AI COPILOT ---
 @app.post("/api/v1/copilot/query")
-def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Constrained AI Investigation Assistant. Never makes primary linkage decisions."""
-    q_lower = query_text.lower()
-    evidence_items = db.query(Evidence).all()
-    evidence_count = len(evidence_items)
-    evidence_ids = [e.id for e in evidence_items[:5]]
+def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db),
+                  current_user: User = Depends(get_current_user)):
+    """Investigation assistant, answered from the authoritative ledger.
 
-    if "lockbit" in q_lower or "ransomware" in q_lower:
-        response_text = (
-            f"LockBit Ransomware Syndicate Intelligence Analysis: "
-            f"Identified 3 co-spent BTC wallet clusters (total 14.82 BTC volume), 2 RSA-4096 PGP fingerprints (0x4A8F912C, 0x89B2E101), "
-            f"and 4 active .onion mirrors on Tor v3. "
-            f"Multi-modal fusion calibrated probability: 94.2% (High Confidence). "
-            f"All raw HTML payloads archived under WARC specification with immutable SHA-256 signatures."
-        )
-    elif "pgp" in q_lower or "key" in q_lower:
-        response_text = (
-            f"PGP Identity Correlation: "
-            f"Extracted 2 authoritative public key blocks from unstructured darknet forum posts. "
-            f"Fingerprint `4A8F912C9012` matches user handle 'Vortex99' across Exploit.in and XSS.is. "
-            f"Identity evidence family score: +4.15 LLR (Log-Likelihood Ratio)."
-        )
-    elif "wallet" in q_lower or "btc" in q_lower or "crypto" in q_lower or "monero" in q_lower:
-        response_text = (
-            f"Financial Blockchain Intelligence: "
-            f"Tracked UTXO co-spending inputs linking wallet `bc1q9v83k...` to `1A1zP1eP...`. "
-            f"Detected 2 peeling chain transactions routed through Tornado Cash / ChipMixer. "
-            f"Financial evidence family score: +3.80 LLR."
-        )
-    elif "stylometry" in q_lower or "writing" in q_lower or "text" in q_lower:
-        response_text = (
-            f"Linguistic & Stylometric Analysis: "
-            f"Analyzed vocabulary frequency, function word distributions, and punctuation patterns. "
-            f"Neural Transformer embedding similarity: 0.912 cosine distance. "
-            f"Stylometry evidence family score: +2.95 LLR."
-        )
-    elif "audit" in q_lower or "hash" in q_lower or "chain" in q_lower:
-        response_text = (
-            f"Forensic Chain of Custody Audit: "
-            f"Cryptographic hash chain status: VERIFIED VALID. "
-            f"All {evidence_count} evidence items are immutably signed using SHA-256 digest trees. "
-            f"Zero hash mismatch or tampering detected."
-        )
-    else:
-        response_text = (
-            f"Based on the authoritative evidence ledger ({evidence_count} verified artifacts), "
-            f"Subject Entity 'ShadowByte' is linked to Candidate Account 'Vortex99' across 4 orthogonal evidence families: "
-            f"Exact Identity (PGP Key 4A8F912C...), Financial (BTC Wallet Co-Spending), Infrastructure (Favicon mmh3 -1598234912), "
-            f"and Stylometric Similarity (Burrows' Delta 0.12). "
-            f"One temporal contradiction is flagged (simultaneous postings from UTC+8 and UTC-5). "
-            f"Calibrated Confidence: 88.5% (High Confidence)."
-        )
+    Was six hardcoded paragraphs selected by keyword: asking about any actor
+    returned the same ShadowByte/Vortex99 text, including for gibberish, with
+    every figure a string literal. That is the opposite of what this system
+    claims -- an assistant that fabricates a confident answer to every question
+    undermines a product built on abstention and provenance.
 
+    Now every claim comes from a row. `packages.copilot` resolves the entity,
+    pulls its hypotheses and evidence, and reports the real numbers; when the
+    ledger cannot answer it says so rather than substituting a different actor.
+    Claude drives the same tools when ANTHROPIC_API_KEY is configured; without
+    it the deterministic path answers, which is the offline demo default.
+    """
+    from packages.copilot import ask
+
+    result = ask(db, query_text)
     return {
         "query": query_text,
-        "response": response_text,
-        "referenced_evidence_ids": evidence_ids,
-        "disclaimer": "AI outputs generate hypotheses only and do not constitute primary evidence or authoritative attribution."
+        "response": result["answer"],
+        "answered": result["answered"],
+        "engine": result.get("engine", "deterministic"),
+        "intent": result.get("intent"),
+        "tools_used": result.get("tools_used", []),
+        "citation_count": len(result.get("citations", [])),
+        # Existing DoD contract: the assistant must cite the evidence rows its
+        # claim rests on, not just assert a conclusion.
+        "referenced_evidence_ids": result.get("evidence_ids", []),
+        "resolved_actor": result.get("resolved_actor"),
+        "disclaimer": (
+            "Derived from the evidence ledger. Attribution decisions require "
+            "analyst review; this assistant does not make them."
+        ),
     }
 
 
-
-# --- ADVANCED ATTRIBUTION & ML ENDPOINTS ---
 @app.post("/api/v1/stylometry/neural")
 def evaluate_neural_stylometry(
     text_a: str = Query(...),

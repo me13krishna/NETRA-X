@@ -59,3 +59,14 @@ Thumbs.db
 netrax.db
 *.sqlite
 *.sqlite3
+
+# Tor hidden-service keys. The private key IS the onion address: committing it
+# publishes the service's identity and lets anyone impersonate it. Harmless for
+# a throwaway test address, a bad habit to build. The testbed keeps its key in a
+# Docker volume, but this guards against a bind-mount during local debugging.
+testbed/**/hidden_service/
+testbed/**/tor-data/
+
+# Logs & temp files
+*.log
+tok.txt

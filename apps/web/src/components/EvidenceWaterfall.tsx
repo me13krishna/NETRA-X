@@ -7,12 +7,15 @@ interface EvidenceWaterfallProps {
   supporting: any[];
   contradictions: any[];
   familyBreakdown?: Record<string, number>;
+  /** Live storage backend label from /api/v1/config/engine (e.g. "SQLite", "PostgreSQL"). */
+  storageBackend?: string;
 }
 
 export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
   supporting,
   contradictions,
-  familyBreakdown = {}
+  familyBreakdown = {},
+  storageBackend = "Evidence Ledger",
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedModalItem, setSelectedModalItem] = useState<any | null>(null);
@@ -35,7 +38,7 @@ export const EvidenceWaterfall: React.FC<EvidenceWaterfallProps> = ({
             <span>Multi-Evidence Family Contribution Cascade</span>
           </h3>
           <div className="text-xs font-mono text-netra-subtle">
-            <span className="text-netra-purple font-bold">Postgres Source of Truth</span>
+            <span className="text-netra-purple font-bold">{storageBackend} Source of Truth</span>
           </div>
         </div>
 

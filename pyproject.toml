@@ -38,6 +38,11 @@ dependencies = [
 # Neural stylometry only. Deliberately NOT a runtime dependency: torch is a
 # ~2GB install and the deployment target is a 512MB Render instance, where a
 # hard requirement would break the build outright.
+# Claude-backed copilot. Optional: the copilot answers deterministically from
+# the ledger without it, which is the offline demo default.
+copilot = [
+    "anthropic>=0.40.0",
+]
 neural = [
     "torch>=2.2.0",
 ]

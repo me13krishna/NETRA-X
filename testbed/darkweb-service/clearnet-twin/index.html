@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  The clearnet twin. Deliberately ordinary -- a public-facing site with nothing
+  to hide, which is exactly why it is findable.
+
+  Its only job is to serve the SAME favicon bytes as the hidden service. That
+  shared hash is what a Shodan query pivots on, turning "some onion" into "this
+  company's infrastructure".
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vesper Logistics Ltd</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    body { margin:0; background:#fafaf8; color:#1a1a18;
+           font:15px/1.7 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    .wrap { max-width:640px; margin:0 auto; padding:64px 24px; }
+    h1 { font-size:28px; margin:0 0 6px; }
+    .sub { color:#6b6b66; margin-bottom:32px; }
+    .note { border-left:3px solid #d8d8d2; padding-left:14px; color:#6b6b66;
+            font-size:13px; margin-top:40px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Vesper Logistics Ltd</h1>
+  <div class="sub">Freight forwarding &amp; bonded warehousing since 2019</div>
+
+  <p>We provide contract logistics, customs brokerage and bonded storage for
+  small-volume importers across the EU.</p>
+
+  <p>Registered office: Unit 14, Halden Business Park.<br>
+  Enquiries: <a href="mailto:office@vesper-logistics.example">office@vesper-logistics.example</a></p>
+
+  <div class="note">
+    Synthetic content generated for the NETRA-X testbed. This company does not
+    exist. It plays the role of the clearnet host that shares a favicon with the
+    hidden service, which is the link the infrastructure module is built to find.
+  </div>
+</div>
+</body>
+</html>
