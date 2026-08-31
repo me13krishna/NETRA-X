@@ -1306,9 +1306,21 @@ def export_stix(hypothesis_id: Optional[str] = None, db: Session = Depends(get_d
     """Exports threat intelligence in STIX 2.1 JSON bundle format."""
     if not hypothesis_id:
         hyp = db.query(Hypothesis).first()
-        hypothesis_id = hyp.id if hyp else "hyp_default"
+        if hyp is None:
+            raise HTTPException(status_code=404, detail="No hypothesis available to export")
+        hypothesis_id = hyp.id
     h_schema = get_hypothesis(hypothesis_id, db, current_user)
-    actor_data = {"aliases": [h_schema.subject_label, "DarkSpectre", "CipherVoid"]}
+
+    # The alias list was ["<subject>", "DarkSpectre", "CipherVoid"] -- two real
+    # aliases, but ShadowByte's, hardcoded onto whichever hypothesis was being
+    # exported. A STIX bundle is shared outward as threat intelligence, so
+    # attaching one actor's handles to another's is a contamination that
+    # travels. The subject's own aliases are read from the ledger.
+    subject = db.query(Actor).filter_by(id=h_schema.subject_entity_id).first()
+    aliases = [h_schema.subject_label]
+    if subject is not None:
+        aliases += [a.value for a in subject.aliases if a.value != h_schema.subject_label]
+    actor_data = {"aliases": aliases}
     stix_bundle = generate_stix_bundle(h_schema.model_dump(), actor_data)
     return Response(
         content=json.dumps(stix_bundle, indent=2),
@@ -1322,7 +1334,9 @@ def export_csv(hypothesis_id: Optional[str] = None, db: Session = Depends(get_db
     """Exports attribution evidence breakdown in CSV format."""
     if not hypothesis_id:
         hyp = db.query(Hypothesis).first()
-        hypothesis_id = hyp.id if hyp else "hyp_default"
+        if hyp is None:
+            raise HTTPException(status_code=404, detail="No hypothesis available to export")
+        hypothesis_id = hyp.id
     h_schema = get_hypothesis(hypothesis_id, db, current_user)
     all_evidence = [item.model_dump() for item in (h_schema.supporting_evidence + h_schema.contradictions)]
     csv_str = generate_csv_export(all_evidence)
