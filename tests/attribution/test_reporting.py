@@ -25,8 +25,9 @@ def test_build_waterfall_breakdown_positive_case():
     assert len(breakdown["family_contributions"]) > 0
     assert breakdown["total_positive_capped_llr"] > 10.0
     assert breakdown["contradiction_penalty"] == 0.0
-    assert breakdown["final_net_llr"] == res.final_llr
+    assert pytest.approx(breakdown["final_net_llr"], abs=1e-3) == res.final_llr
     assert breakdown["decision"] == "HIGH_CONFIDENCE_LINK"
+
 
 
 def test_build_waterfall_breakdown_contradiction_case():

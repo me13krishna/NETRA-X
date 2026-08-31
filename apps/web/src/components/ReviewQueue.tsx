@@ -102,7 +102,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
                     )}
                     <span className={`px-2.5 py-1 rounded-md border font-bold ${
                       h.status === "ACCEPTED" ? "bg-netra-valid/15 text-netra-valid border-netra-valid/40" :
-                      h.status === "REJECTED" ? "bg-red-500/20 text-red-400 border-red-500/40" :
+                      h.status === "REJECTED" ? "bg-netra-red/20 text-netra-red border-netra-red/40" :
                       "bg-netra-amber/20 text-netra-amber border-netra-amber/40"
                     }`}>
                       {h.status}
@@ -148,7 +148,7 @@ export const ReviewQueue: React.FC<ReviewQueueProps> = ({
                   </button>
                   <button
                     onClick={() => onReviewDecision(h.id, "REJECT")}
-                    className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 rounded font-bold transition flex items-center space-x-1"
+                    className="px-3 py-1 bg-netra-red/20 hover:bg-netra-red/30 text-netra-red border border-netra-red/40 rounded font-bold transition flex items-center space-x-1"
                   >
                     <XCircle className="w-3.5 h-3.5" />
                     <span>REJECT</span>

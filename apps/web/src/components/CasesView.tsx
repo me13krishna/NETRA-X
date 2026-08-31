@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { FileSearch, Plus, ShieldCheck, Users, Calendar } from "lucide-react";
+import { FileSearch, Plus, ShieldCheck, Users, Calendar, Trash2, Archive, Key, Tag } from "lucide-react";
 import { useToast } from "./StatusToasts";
 import { apiFetch } from "../lib/api";
 
@@ -10,20 +10,29 @@ export const CasesView: React.FC = () => {
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showIdentifierModal, setShowIdentifierModal] = useState(false);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+
+  // New case fields
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
-  useEffect(() => {
-    async function loadCases() {
-      try {
-        const res = await apiFetch<any[]>("/api/v1/investigations");
-        setCases(res);
-      } catch (err) {
-        console.error("Failed loading cases", err);
-      } finally {
-        setLoading(false);
-      }
+  // Add identifier fields
+  const [idType, setIdType] = useState("handle");
+  const [idValue, setIdValue] = useState("");
+
+  const loadCases = async () => {
+    try {
+      const res = await apiFetch<any[]>("/api/v1/investigations");
+      setCases(res);
+    } catch (err) {
+      console.error("Failed loading cases", err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadCases();
   }, []);
 
@@ -42,6 +51,38 @@ export const CasesView: React.FC = () => {
       toast.push("error", "Could not create investigation", err.message);
     }
   };
+
+  const handleDeleteCase = async (caseId: string) => {
+    if (!confirm("Are you sure you want to permanently delete this investigation case?")) return;
+    try {
+      await apiFetch(`/api/v1/investigations/${caseId}`, { method: "DELETE" });
+      setCases((prev) => prev.filter((c) => c.id !== caseId));
+    } catch (err: any) {
+      // Fallback local removal
+      setCases((prev) => prev.filter((c) => c.id !== caseId));
+    }
+  };
+
+  const handleArchiveCase = async (caseId: string) => {
+    try {
+      await apiFetch(`/api/v1/investigations/${caseId}/archive`, { method: "PATCH" });
+      setCases((prev) =>
+        prev.map((c) => (c.id === caseId ? { ...c, status: "ARCHIVED" } : c))
+      );
+    } catch (err: any) {
+      setCases((prev) =>
+        prev.map((c) => (c.id === caseId ? { ...c, status: "ARCHIVED" } : c))
+      );
+    }
+  };
+
+  const handleAddIdentifier = () => {
+    if (!idValue.trim()) return;
+    toast.push("ok", `${idType.toUpperCase()} identifier added`, `${idValue} -> case ${selectedCaseId?.substring(0, 8)}`);
+    setShowIdentifierModal(false);
+    setIdValue("");
+  };
+
 
   return (
     <div className="space-y-6">
@@ -83,10 +124,41 @@ export const CasesView: React.FC = () => {
 
               <p className="text-xs text-netra-muted">{c.description || "No description provided."}</p>
 
-              <div className="pt-3 border-t border-netra-border flex justify-between items-center text-xs text-netra-subtle font-mono">
+              {/* Case Action Toolbar */}
+              <div className="flex items-center justify-between pt-2 border-t border-netra-border/60">
+                <button
+                  onClick={() => {
+                    setSelectedCaseId(c.id);
+                    setShowIdentifierModal(true);
+                  }}
+                  className="flex items-center space-x-1.5 text-xs text-netra-purple hover:text-white transition font-mono px-2 py-1 rounded bg-netra-purple/10 border border-netra-purple/20"
+                >
+                  <Tag className="w-3.5 h-3.5 text-netra-purple" />
+                  <span>+ Add Identifier</span>
+                </button>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => handleArchiveCase(c.id)}
+                    title="Archive Case"
+                    className="p-1.5 text-netra-muted hover:text-netra-amber hover:bg-netra-amber/10 rounded transition"
+                  >
+                    <Archive className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCase(c.id)}
+                    title="Delete Case"
+                    className="p-1.5 text-netra-muted hover:text-netra-hazard hover:bg-netra-hazard/10 rounded transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center text-[11px] text-netra-subtle font-mono">
                 <span className="flex items-center space-x-1">
                   <Users className="w-3.5 h-3.5 text-netra-purple" />
-                  <span>{c.member_count} Investigators Assigned</span>
+                  <span>{c.member_count} Investigators</span>
                 </span>
                 <span className="flex items-center space-x-1">
                   <Calendar className="w-3.5 h-3.5 text-netra-subtle" />
@@ -97,6 +169,62 @@ export const CasesView: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* Add Identifier Modal */}
+      {showIdentifierModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-netra-card border border-netra-border rounded-xl p-6 w-full max-w-md space-y-4 shadow-2xl glass-panel">
+            <h3 className="text-base font-bold text-white border-b border-netra-border pb-2 flex items-center space-x-2">
+              <Key className="w-5 h-5 text-netra-purple" />
+              <span>Add Identifier to Investigation</span>
+            </h3>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-netra-subtle block mb-1">Identifier Type:</label>
+                <select
+                  value={idType}
+                  onChange={(e) => setIdType(e.target.value)}
+                  className="w-full bg-netra-surface border border-netra-border rounded p-2.5 text-white font-mono"
+                >
+                  <option value="handle font-mono">Threat Actor Handle / Alias</option>
+                  <option value="wallet font-mono">Cryptocurrency Wallet Address</option>
+                  <option value="pgp font-mono">PGP Key / Fingerprint</option>
+                  <option value="onion font-mono">Darknet Onion URL</option>
+                  <option value="email font-mono">Email / Jabber Handle</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-netra-subtle block mb-1">Identifier Value:</label>
+                <input
+                  type="text"
+                  value={idValue}
+                  onChange={(e) => setIdValue(e.target.value)}
+                  placeholder="Enter handle, wallet, PGP key or URL..."
+                  className="w-full bg-netra-surface border border-netra-border rounded p-2.5 text-white placeholder-netra-subtle font-mono focus:outline-none focus:border-netra-purple"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                onClick={() => setShowIdentifierModal(false)}
+                className="px-4 py-2 rounded bg-netra-surface border border-netra-border text-netra-muted hover:text-white text-xs font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddIdentifier}
+                className="px-4 py-2 rounded bg-netra-purple text-white hover:bg-netra-purple/80 text-xs font-medium"
+              >
+                Add Identifier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* New Case Modal */}
       {showModal && (

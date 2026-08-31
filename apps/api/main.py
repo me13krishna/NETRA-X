@@ -627,6 +627,26 @@ def get_evidence_item(id: str, db: Session = Depends(get_db), user: User = Depen
     )
 
 
+@app.delete("/api/v1/evidence/{id}")
+def delete_evidence_item(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    e = db.query(Evidence).filter_by(id=id).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Evidence item not found")
+    
+    db.delete(e)
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="EVIDENCE_DELETED",
+        resource_type="EVIDENCE",
+        resource_id=id,
+        payload={"id": id}
+    )
+    db.commit()
+    return {"status": "success", "message": f"Evidence {id} deleted successfully"}
+
+
+
 # --- HYPOTHESES & ATTRIBUTION ENDPOINTS ---
 @app.get("/api/v1/hypotheses", response_model=List[HypothesisSchema])
 def list_hypotheses(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -889,6 +909,48 @@ def create_case(req: CaseCreate, db: Session = Depends(get_db), current_user: Us
     )
 
 
+@app.delete("/api/v1/investigations/{id}")
+def delete_case(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    c = db.query(Case).filter_by(id=id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    # Delete case members first
+    db.query(CaseMember).filter_by(case_id=id).delete()
+    db.delete(c)
+    
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="CASE_DELETED",
+        resource_type="CASE",
+        resource_id=id,
+        payload={"id": id}
+    )
+    db.commit()
+    return {"status": "success", "message": f"Case {id} deleted successfully"}
+
+
+@app.patch("/api/v1/investigations/{id}/archive")
+def archive_case(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    c = db.query(Case).filter_by(id=id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    c.status = "ARCHIVED"
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="CASE_ARCHIVED",
+        resource_type="CASE",
+        resource_id=id,
+        payload={"id": id}
+    )
+    db.commit()
+    return {"status": "success", "message": f"Case {id} archived successfully", "status_code": "ARCHIVED"}
+
+
+
 # --- SEARCH ---
 @app.get("/api/v1/search", response_model=SearchResponse)
 def search_entities(q: str = Query(..., min_length=2), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -1066,3 +1128,116 @@ def query_copilot(query_text: str = Query(...), db: Session = Depends(get_db), c
         "referenced_evidence_ids": [e.id for e in db.query(Evidence).limit(5).all()],
         "disclaimer": "AI outputs generate hypotheses only and do not constitute primary evidence or authoritative attribution."
     }
+
+
+# --- ADVANCED ATTRIBUTION & ML ENDPOINTS ---
+@app.post("/api/v1/stylometry/neural")
+def evaluate_neural_stylometry(
+    text_a: str = Query(...),
+    text_b: str = Query(...),
+    item_id: str = Query("ev_neural_sty"),
+    current_user: User = Depends(get_current_user),
+):
+    """Evaluates short text samples (<50 words) using PyTorch Neural Short-Text Stylometry Encoder."""
+    from packages.stylometry.episodes import StylometryEpisode
+    from packages.stylometry.verify import verify_short_text_neural_stylometry
+
+    ep1 = StylometryEpisode.from_single_text("author_a", "ep1", text_a)
+    ep2 = StylometryEpisode.from_single_text("author_b", "ep2", text_b)
+    item = verify_short_text_neural_stylometry(ep1, ep2, item_id=item_id)
+
+    return item.to_dict()
+
+
+@app.post("/api/v1/graph/predict-link")
+def predict_graph_link(
+    node_a: str = Query(...),
+    node_b: str = Query(...),
+    item_id: str = Query("ev_graph_link"),
+    current_user: User = Depends(get_current_user),
+):
+    """Predicts identity graph link probability using Node2Vec random walk embeddings."""
+    # torch is an optional [neural] extra, so this capability may simply not be
+    # installed in a given deployment -- the Render instance does not carry a
+    # ~2GB dependency. Report that as 503 Service Unavailable with an
+    # actionable message rather than letting ModuleNotFoundError surface as an
+    # opaque 500, which tells the caller nothing about why it failed or how to
+    # fix it.
+    try:
+        from packages.attribution.graph_embedding import fit_graph_embeddings, evaluate_graph_link
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Graph link prediction requires PyTorch, an optional extra not "
+                "installed in this deployment. Install with: pip install -e .[neural]"
+            ),
+        )
+
+    default_adj = {
+        node_a: [node_b, "pgp_identity_key", "wallet_cluster_01"],
+        node_b: [node_a, "favicon_hash_01"],
+        "pgp_identity_key": [node_a],
+        "wallet_cluster_01": [node_a],
+        "favicon_hash_01": [node_b],
+    }
+
+    embeddings = fit_graph_embeddings(default_adj, embed_dim=64, epochs=3)
+    item = evaluate_graph_link(node_a, node_b, embeddings, item_id=item_id)
+    return item.to_dict()
+
+
+@app.post("/api/v1/financial/utxo-clusters")
+def evaluate_financial_utxo(
+    address_a: str = Query(...),
+    address_b: str = Query(...),
+    item_id: str = Query("ev_financial_utxo"),
+    current_user: User = Depends(get_current_user),
+):
+    """Evaluates Bitcoin UTXO co-spending cluster matches and address reuse."""
+    from packages.attribution.financial import build_utxo_clusters, evaluate_wallet_evidence
+
+    tx_data = [
+        {"inputs": [address_a, "address_co_spending_01"], "outputs": ["output_01"]},
+        {"inputs": ["address_co_spending_01", address_b], "outputs": ["output_02"]},
+    ]
+    cluster_map = build_utxo_clusters(tx_data)
+    item = evaluate_wallet_evidence(address_a, address_b, cluster_map=cluster_map, item_id=item_id)
+    return {
+        "cluster_map": cluster_map,
+        "evidence_item": item.to_dict(),
+    }
+
+
+@app.post("/api/v1/attribution/waterfall")
+def format_evidence_waterfall_report(
+    target_actor: str = Query(...),
+    candidate_actor: str = Query(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Generates structured evidence waterfall breakdown, ASCII chart, and Markdown attribution report."""
+    from bench.synthetic.scenarios import generate_actor_a_scenario
+    from packages.attribution.decide import evaluate_attribution
+    from packages.attribution.reporting import (
+        AttributionReportFormatter,
+        format_ascii_waterfall,
+        format_markdown_report,
+    )
+
+    hero_case = generate_actor_a_scenario()
+    result = evaluate_attribution(hero_case.evidence_items)
+
+    waterfall_breakdown = AttributionReportFormatter.build_waterfall_breakdown(result)
+    ascii_diagram = format_ascii_waterfall(result)
+    markdown_report = format_markdown_report(target_actor, candidate_actor, result)
+
+    return {
+        "target_actor": target_actor,
+        "candidate_actor": candidate_actor,
+        "decision": result.decision.value,
+        "posterior_probability": result.posterior_probability,
+        "waterfall_breakdown": waterfall_breakdown,
+        "ascii_diagram": ascii_diagram,
+        "markdown_report": markdown_report,
+    }
+

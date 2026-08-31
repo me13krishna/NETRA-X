@@ -9,6 +9,10 @@ from packages.stylometry.verify import (
     compute_burrows_delta,
     compute_cosine_similarity,
 )
+
+# corpus_stats needs only numpy, so it stays a hard import.
+from packages.stylometry.corpus_stats import BackgroundCorpusStats
+
 # torch is a ~2GB install and is not a runtime dependency of the API, the
 # benchmark, or the classical stylometry path -- so the neural encoder is
 # optional here rather than mandatory. Importing it eagerly made the whole
@@ -45,8 +49,8 @@ __all__ = [
     "verify_short_text_neural_stylometry",
     "compute_burrows_delta",
     "compute_cosine_similarity",
+    "BackgroundCorpusStats",
     "NeuralStylometryEncoder",
     "extract_neural_style_embedding",
     "NEURAL_AVAILABLE",
 ]
-
