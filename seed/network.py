@@ -476,7 +476,12 @@ def build(session):
 
         # The waterfall the UI draws: one row per contributing item, carrying
         # the engine's own post-discount contribution.
-        by_id = {c.get("id"): c for c in result.contributions}
+        # ItemContributionBreakdown.to_dict() keys on `evidence_id` and
+        # `llr_contrib`. This looked up "id" and "contribution" -- neither key
+        # exists, so every lookup missed and every contribution silently
+        # defaulted to 0.0. The waterfall then displayed a stored LLR of 20.50
+        # above evidence rows summing to zero, on 13 of 14 links.
+        by_id = {c.get("evidence_id"): c for c in result.contributions}
         for it in items:
             c = by_id.get(it.id, {})
             session.add(HypothesisEvidence(
@@ -485,7 +490,7 @@ def build(session):
                 evidence_id=it.id,
                 family=it.family.value,
                 raw_llr=round(float(c.get("raw_llr", it.get_effective_llr())), 4),
-                contribution=round(float(c.get("contribution", 0.0)), 4),
+                contribution=round(float(c.get("llr_contrib", 0.0)), 4),
                 reliability_weight=1.0,
                 is_contradiction=it.is_contradiction,
             ))

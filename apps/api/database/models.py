@@ -161,6 +161,19 @@ class Evidence(Base):
     is_immutable = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    # Retraction, not deletion.
+    #
+    # The ledger's whole claim is an append-only chain of custody, and
+    # `is_immutable` was decorative -- nothing read it, while a hard DELETE
+    # endpoint physically removed rows. That left 36 of 69 cited evidence rows
+    # missing, so hypotheses scored against evidence that no longer existed and
+    # the waterfall rendered placeholders in their place.
+    #
+    # Withdrawn evidence stays on the record and stops counting toward scores.
+    retracted_at = Column(DateTime, nullable=True)
+    retracted_by = Column(String(36), nullable=True)
+    retraction_reason = Column(Text, nullable=True)
+
     artifact = relationship("Artifact")
 
 

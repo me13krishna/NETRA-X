@@ -69,3 +69,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 def init_db_sync():
     """Synchronous DB table creation for seed/testing."""
     Base.metadata.create_all(bind=sync_engine)
+
+    # create_all adds missing tables but never a missing column, so a model
+    # gaining a field left every existing database broken until it was deleted.
+    from apps.api.database.migrate import apply as apply_migrations
+
+    applied = apply_migrations(sync_engine)
+    if applied:
+        print(f"[+] Applied additive migrations: {', '.join(applied)}")

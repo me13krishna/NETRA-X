@@ -66,3 +66,4 @@ test-onion-service/
 # Logs & temp files
 *.log
 tok.txt
+netrax.db.bak

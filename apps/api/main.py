@@ -714,7 +714,9 @@ def list_evidence(db: Session = Depends(get_db), user: User = Depends(get_curren
             dependence_group=e.dependence_group,
             is_immutable=e.is_immutable,
             created_at=e.created_at,
-            sha256=e.artifact.sha256 if e.artifact else None
+            sha256=e.artifact.sha256 if e.artifact else None,
+            retracted_at=e.retracted_at,
+            retraction_reason=e.retraction_reason,
         ))
     return results
 
@@ -736,28 +738,92 @@ def get_evidence_item(id: str, db: Session = Depends(get_db), user: User = Depen
         dependence_group=e.dependence_group,
         is_immutable=e.is_immutable,
         created_at=e.created_at,
-        sha256=e.artifact.sha256 if e.artifact else None
+        sha256=e.artifact.sha256 if e.artifact else None,
+        retracted_at=e.retracted_at,
+        retraction_reason=e.retraction_reason,
     )
 
 
 @app.delete("/api/v1/evidence/{id}")
-def delete_evidence_item(id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def retract_evidence_item(
+    id: str,
+    reason: str = Query("Retracted by analyst", max_length=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retract an evidence item. The row is withdrawn, never destroyed.
+
+    This used to be a hard `db.delete(e)`. That contradicted the product's
+    central claim -- an append-only, hash-chained chain of custody -- and it
+    silently corrupted attribution: HypothesisEvidence rows kept pointing at
+    the deleted evidence, so hypotheses carried scores derived from rows that
+    no longer existed, and the evidence waterfall rendered placeholder values
+    where the provenance should have been. `is_immutable` was never enforced
+    anywhere; it is enforced here.
+
+    Retraction is the correct operation. The item stays on the record, marked
+    withdrawn and attributed to whoever withdrew it, and stops contributing to
+    scores. The audit chain keeps both the ingestion and the retraction.
+    """
     e = db.query(Evidence).filter_by(id=id).first()
     if not e:
         raise HTTPException(status_code=404, detail="Evidence item not found")
-    
-    db.delete(e)
+
+    if e.retracted_at is not None:
+        raise HTTPException(status_code=409, detail="Evidence item is already retracted")
+
+    cited_by = db.query(HypothesisEvidence).filter_by(evidence_id=id).count()
+
+    e.retracted_at = datetime.utcnow()
+    e.retracted_by = current_user.id
+    e.retraction_reason = reason
+
     append_audit_event(
         session=db,
         actor_user_id=current_user.id,
-        action="EVIDENCE_DELETED",
+        action="EVIDENCE_RETRACTED",
         resource_type="EVIDENCE",
         resource_id=id,
-        payload={"id": id}
+        payload={"id": id, "reason": reason, "cited_by_hypotheses": cited_by},
     )
     db.commit()
-    return {"status": "success", "message": f"Evidence {id} deleted successfully"}
 
+    # Withdrawing a claim has to move the numbers that rested on it. Leaving
+    # the score untouched would keep asserting a confidence derived from
+    # evidence that no longer counts, and leave the waterfall rows no longer
+    # summing to the headline above them.
+    from packages.evidence import integrity
+
+    rescored = []
+    for hid in {he.hypothesis_id for he in
+                db.query(HypothesisEvidence).filter_by(evidence_id=id).all()}:
+        delta = integrity.rescore_hypothesis(db, hid)
+        if delta:
+            rescored.append(delta)
+            append_audit_event(
+                session=db,
+                actor_user_id=current_user.id,
+                action="HYPOTHESIS_RESCORED",
+                resource_type="HYPOTHESIS",
+                resource_id=hid,
+                payload={"trigger": "evidence_retraction", "evidence_id": id, **delta},
+            )
+    if rescored:
+        db.commit()
+
+    return {
+        "status": "retracted",
+        "id": id,
+        "reason": reason,
+        "cited_by_hypotheses": cited_by,
+        "rescored": rescored,
+        "message": (
+            f"Evidence {id} retracted. It remains on the record and no longer "
+            f"counts toward attribution."
+            + (f" {len(rescored)} hypothesis/hypotheses rescored."
+               if rescored else "")
+        ),
+    }
 
 
 # --- HYPOTHESES & ATTRIBUTION ENDPOINTS ---
@@ -779,6 +845,10 @@ def list_hypotheses(db: Session = Depends(get_db), user: User = Depends(get_curr
 
         for he in h.evidence_items:
             ev = he.evidence
+            # Retracted evidence keeps its ledger row but stops backing a
+            # score, so it must not appear in the waterfall as live support.
+            if ev is not None and ev.retracted_at is not None:
+                continue
             item_data = EvidenceWaterfallItem(
                 evidence_id=ev.id if ev else he.evidence_id,
                 family=he.family,
@@ -791,7 +861,7 @@ def list_hypotheses(db: Session = Depends(get_db), user: User = Depends(get_curr
                 is_contradiction=he.is_contradiction,
                 dependence_group=ev.dependence_group if ev else "DEP_NONE",
                 timestamp=ev.created_at if ev else datetime.utcnow(),
-                sha256=ev.artifact.sha256 if (ev and ev.artifact) else "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                sha256=(ev.artifact.sha256 if (ev and ev.artifact) else None)
             )
             if he.is_contradiction:
                 contradictions.append(item_data)
@@ -843,6 +913,8 @@ def get_hypothesis(id: str, db: Session = Depends(get_db), user: User = Depends(
 
     for he in h.evidence_items:
         ev = he.evidence
+        if ev is not None and ev.retracted_at is not None:
+            continue
         item_data = EvidenceWaterfallItem(
             evidence_id=ev.id if ev else he.evidence_id,
             family=he.family,
@@ -855,7 +927,7 @@ def get_hypothesis(id: str, db: Session = Depends(get_db), user: User = Depends(
             is_contradiction=he.is_contradiction,
             dependence_group=ev.dependence_group if ev else "DEP_NONE",
             timestamp=ev.created_at if ev else datetime.utcnow(),
-            sha256=ev.artifact.sha256 if (ev and ev.artifact) else "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            sha256=(ev.artifact.sha256 if (ev and ev.artifact) else None)
         )
         if he.is_contradiction:
             contradictions.append(item_data)
@@ -887,13 +959,25 @@ def get_hypothesis(id: str, db: Session = Depends(get_db), user: User = Depends(
     )
 
 
+DECISION_TO_STATUS = {
+    "ACCEPT": "ACCEPTED",
+    "REJECT": "REJECTED",
+    "INSUFFICIENT": "INSUFFICIENT",
+}
+
+
 @app.post("/api/v1/hypotheses/{id}/review", response_model=HypothesisSchema)
 def submit_analyst_review(id: str, req: ReviewRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     h = db.query(Hypothesis).filter_by(id=id).first()
     if not h:
         raise HTTPException(status_code=404, detail="Hypothesis not found")
 
-    h.status = req.decision.value
+    # A decision is a verb the analyst performs (ACCEPT); a status is the state
+    # it leaves behind (ACCEPTED). Assigning the verb straight into the status
+    # column made a just-accepted hypothesis disappear from the ACCEPTED filter
+    # tab and lose its badge colour, because the seed and the UI both use the
+    # past-tense form. The review row keeps the verb; only the state is mapped.
+    h.status = DECISION_TO_STATUS[req.decision.value]
     h.reviewed_at = datetime.utcnow()
     h.reviewer_id = current_user.id
 
@@ -942,7 +1026,7 @@ def evaluate_attribution_on_demand(raw_items: List[Dict[str, Any]], current_user
             source_uri=item.get("source_uri", "http://dynamic.onion"),
             extraction_method=item.get("extraction_method", "manual_input"),
             timestamp=item.get("timestamp", datetime.utcnow().isoformat()),
-            sha256=item.get("sha256", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            sha256=item.get("sha256"),
             is_contradiction=bool(item.get("is_contradiction", False)),
             contradiction_type=item.get("contradiction_type", ""),
             abstain=bool(item.get("abstain", False))

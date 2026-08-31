@@ -23,13 +23,39 @@ export const EvidenceVault: React.FC = () => {
     loadEvidence();
   }, []);
 
-  const handleDeleteEvidence = async (id: string) => {
-    if (!confirm("Are you sure you want to purge this evidence item from the vault?")) return;
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Retract, not purge.
+   *
+   * Two things were wrong here. The copy promised to "purge" the item, but the
+   * ledger is append-only -- withdrawing evidence must leave the record and its
+   * audit trail intact. And the catch block dropped the row from the table even
+   * when the request failed, so a rejected retraction still looked like it had
+   * worked.
+   */
+  const handleRetractEvidence = async (id: string) => {
+    const reason = prompt(
+      "Reason for retracting this evidence item?\n\n" +
+      "It stays on the record, marked retracted, and stops counting toward attribution."
+    );
+    if (reason === null) return;
+
+    setError(null);
     try {
-      await apiFetch(`/api/v1/evidence/${id}`, { method: "DELETE" });
-      setEvidenceList((prev) => prev.filter((e) => e.id !== id));
+      await apiFetch(
+        `/api/v1/evidence/${id}?reason=${encodeURIComponent(reason || "Retracted by analyst")}`,
+        { method: "DELETE" }
+      );
+      setEvidenceList((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? { ...e, retracted_at: new Date().toISOString(), retraction_reason: reason }
+            : e
+        )
+      );
     } catch (err: any) {
-      setEvidenceList((prev) => prev.filter((e) => e.id !== id));
+      setError(err?.message ?? "Retraction failed. The item is unchanged.");
     }
   };
 
@@ -46,6 +72,12 @@ export const EvidenceVault: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {error && (
+        <div className="border border-netra-red/50 bg-netra-red/10 text-netra-red text-xs font-mono px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
 
       <div className="bg-netra-card border border-netra-border rounded-xl p-5 space-y-4">
         {loading ? (
@@ -66,7 +98,15 @@ export const EvidenceVault: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-netra-border">
                 {evidenceList.map((e) => (
-                  <tr key={e.id} className="hover:bg-netra-hover/50 transition">
+                  <tr
+                    key={e.id}
+                    title={e.retracted_at ? `Retracted: ${e.retraction_reason ?? "no reason recorded"}` : undefined}
+                    className={`transition ${
+                      e.retracted_at
+                        ? "opacity-45 line-through decoration-netra-muted/60"
+                        : "hover:bg-netra-hover/50"
+                    }`}
+                  >
                     <td className="p-3 text-netra-purple">{e.id.substring(0, 13)}...</td>
                     <td className="p-3 text-netra-muted">{e.extraction_method}</td>
                     <td className="p-3 text-white font-semibold">{e.value}</td>
@@ -75,15 +115,17 @@ export const EvidenceVault: React.FC = () => {
                       <ExternalLink className="w-3 h-3 text-netra-subtle" />
                     </td>
                     <td className="p-3 text-netra-cyan">{e.dependence_group}</td>
-                    <td className="p-3 text-netra-valid flex items-center space-x-1">
-                      <Hash className="w-3 h-3 text-netra-valid" />
-                      <span>{e.sha256 ? e.sha256.substring(0, 16) + "..." : "Verified"}</span>
+                    <td className={`p-3 flex items-center space-x-1 ${e.sha256 ? "text-netra-valid" : "text-netra-subtle"}`}>
+                      <Hash className={`w-3 h-3 ${e.sha256 ? "text-netra-valid" : "text-netra-subtle"}`} />
+                      {/* Showed "Verified" precisely when no digest existed. */}
+                      <span>{e.sha256 ? e.sha256.substring(0, 16) + "…" : "no digest"}</span>
                     </td>
                     <td className="p-3 text-right">
                       <button
-                        onClick={() => handleDeleteEvidence(e.id)}
-                        title="Delete Evidence Record"
-                        className="p-1 text-netra-muted hover:text-netra-hazard transition rounded"
+                        onClick={() => handleRetractEvidence(e.id)}
+                        disabled={!!e.retracted_at}
+                        title={e.retracted_at ? "Already retracted" : "Retract evidence record"}
+                        className="p-1 text-netra-muted hover:text-netra-hazard transition rounded disabled:opacity-30 disabled:hover:text-netra-muted disabled:cursor-not-allowed"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
