@@ -346,3 +346,68 @@ class ReprojectResponse(BaseModel):
     actors_count: int
     timestamp: str
 
+
+class ProbeScanRequest(BaseModel):
+    target_url: str = Field(..., min_length=1, max_length=512)
+    html_content: Optional[str] = ""
+    favicon_b64: Optional[str] = None
+    headers: Optional[Dict[str, str]] = {}
+    tls_cert_pem: Optional[str] = None
+
+
+class ProbeScanResponse(BaseModel):
+    target_url: str
+    favicon: Dict[str, Any]
+    server_status: Dict[str, Any]
+    headers: Dict[str, Any]
+    tls_cert: Dict[str, Any]
+    total_leaks_found: int
+    leaks: List[str]
+
+
+class WarcCollectionRequest(BaseModel):
+    raw_content: str = Field(..., min_length=1, max_length=500_000)
+    source_uri: str = Field(..., min_length=1, max_length=512)
+    content_type: Optional[str] = "text/html"
+
+
+class WarcCollectionResponse(BaseModel):
+    warc_record_id: str
+    artifact_sha256: str
+    warc_sha256: str
+    file_path: str
+    file_size_bytes: int
+    stream_msg_id: str
+    timestamp: str
+
+
+class NeuralStylometryRequest(BaseModel):
+    text_a: str = Field(..., min_length=1, max_length=50_000)
+    text_b: str = Field(..., min_length=1, max_length=50_000)
+    threshold: Optional[float] = 0.65
+
+
+class NeuralStylometryResponse(BaseModel):
+    verdict: str
+    similarity_score: float
+    llr_score: float
+    tokens_text_a: int
+    tokens_text_b: int
+    reason: str
+    confidence: float
+
+
+class FinancialClusterTraceRequest(BaseModel):
+    start_address: str = Field(..., min_length=1, max_length=256)
+    transactions: List[Dict[str, Any]] = Field(default_factory=list)
+    max_hops: Optional[int] = 5
+    cluster_id: Optional[str] = "cluster_btc_main"
+
+
+class FinancialClusterTraceResponse(BaseModel):
+    trace: Dict[str, Any]
+    risk_profile: Dict[str, Any]
+    timestamp: str
+
+
+
