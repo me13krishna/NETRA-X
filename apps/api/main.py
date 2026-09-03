@@ -37,8 +37,11 @@ from packages.schemas.models import (
     CaseIdentifierCreate, CaseIdentifierResponse,
     HypothesisStatus, IngestRequest, IngestResponse, ExtractedEvidence,
     BackupResponse, ReprojectResponse, RoleName,
-    ProbeScanRequest, ProbeScanResponse, WarcCollectionRequest, WarcCollectionResponse
+    ProbeScanRequest, ProbeScanResponse, WarcCollectionRequest, WarcCollectionResponse,
+    NeuralStylometryRequest, NeuralStylometryResponse,
+    FinancialClusterTraceRequest, FinancialClusterTraceResponse
 )
+from packages.attribution import NeuralStylometryEngine, UTXOCoSpendingClusterer
 from workers.collection import (
     OnionProbeEngine, WARCWriter, ImmutableArtifact, MinIOArtifactStorage,
     event_bus, RedisEventBus
@@ -1632,6 +1635,69 @@ def collect_warc_artifact(
         stream_msg_id=msg_id,
         timestamp=artifact.timestamp
     )
+
+
+# --- ADVANCED INTELLIGENCE & AI UPGRADES (PHASE 5) ---
+@app.post("/api/v1/attribution/neural-stylometry", response_model=NeuralStylometryResponse)
+def evaluate_neural_stylometry(
+    req: NeuralStylometryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Evaluates short-text author verification with confidence abstention thresholds."""
+    res = NeuralStylometryEngine.verify_authorship(
+        text_a=req.text_a,
+        text_b=req.text_b,
+        threshold=req.threshold or 0.65
+    )
+
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="NEURAL_STYLOMETRY_EVALUATED",
+        resource_type="STYLOMETRY_VERDICT",
+        resource_id=res["verdict"],
+        payload={"similarity": res["similarity_score"], "verdict": res["verdict"]}
+    )
+    db.commit()
+
+    return NeuralStylometryResponse(**res)
+
+
+@app.post("/api/v1/financial/clusters/trace", response_model=FinancialClusterTraceResponse)
+def trace_financial_cluster_hops(
+    req: FinancialClusterTraceRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Traces multi-input UTXO co-spending wallet hops and calculates financial risk profile."""
+    trace_res = UTXOCoSpendingClusterer.trace_mixer_hops(
+        transactions=req.transactions,
+        start_address=req.start_address,
+        max_hops=req.max_hops or 5
+    )
+
+    risk_res = UTXOCoSpendingClusterer.calculate_cluster_risk_score(
+        cluster_id=req.cluster_id or "cluster_btc_main",
+        transactions=req.transactions
+    )
+
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="FINANCIAL_MIXER_HOPS_TRACED",
+        resource_type="WALLET_CLUSTER",
+        resource_id=req.start_address[:64],
+        payload={"mixer_touchpoints": trace_res["mixer_touchpoints_found"], "risk_score": risk_res["risk_score"]}
+    )
+    db.commit()
+
+    return FinancialClusterTraceResponse(
+        trace=trace_res,
+        risk_profile=risk_res,
+        timestamp=datetime.utcnow().isoformat() + "Z"
+    )
+
 
 
 
