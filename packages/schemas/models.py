@@ -346,3 +346,38 @@ class ReprojectResponse(BaseModel):
     actors_count: int
     timestamp: str
 
+
+class ProbeScanRequest(BaseModel):
+    target_url: str = Field(..., min_length=1, max_length=512)
+    html_content: Optional[str] = ""
+    favicon_b64: Optional[str] = None
+    headers: Optional[Dict[str, str]] = {}
+    tls_cert_pem: Optional[str] = None
+
+
+class ProbeScanResponse(BaseModel):
+    target_url: str
+    favicon: Dict[str, Any]
+    server_status: Dict[str, Any]
+    headers: Dict[str, Any]
+    tls_cert: Dict[str, Any]
+    total_leaks_found: int
+    leaks: List[str]
+
+
+class WarcCollectionRequest(BaseModel):
+    raw_content: str = Field(..., min_length=1, max_length=500_000)
+    source_uri: str = Field(..., min_length=1, max_length=512)
+    content_type: Optional[str] = "text/html"
+
+
+class WarcCollectionResponse(BaseModel):
+    warc_record_id: str
+    artifact_sha256: str
+    warc_sha256: str
+    file_path: str
+    file_size_bytes: int
+    stream_msg_id: str
+    timestamp: str
+
+

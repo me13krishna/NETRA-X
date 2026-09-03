@@ -6,6 +6,7 @@ evidence ledger querying, attribution hypothesis evaluation, analyst review, and
 
 import json
 import os
+import base64
 import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -35,7 +36,12 @@ from packages.schemas.models import (
     SearchResponse, SearchResultItem, CaseCreate, CaseResponse, DecisionEnum,
     CaseIdentifierCreate, CaseIdentifierResponse,
     HypothesisStatus, IngestRequest, IngestResponse, ExtractedEvidence,
-    BackupResponse, ReprojectResponse, RoleName
+    BackupResponse, ReprojectResponse, RoleName,
+    ProbeScanRequest, ProbeScanResponse, WarcCollectionRequest, WarcCollectionResponse
+)
+from workers.collection import (
+    OnionProbeEngine, WARCWriter, ImmutableArtifact, MinIOArtifactStorage,
+    event_bus, RedisEventBus
 )
 from apps.api.metrics import MetricsMiddleware, metrics_collector
 from apps.api.database.session import SyncSessionLocal, init_db_sync
@@ -1553,5 +1559,79 @@ def reproject_graph_state(
     """Trigger re-projection of SQL database entities into NetworkX graph memory."""
     worker = GraphReprojectionWorker()
     return worker.run_reprojection(db)
+
+
+# --- PASSIVE PROBE & COLLECTION PIPELINE ENDPOINTS ---
+@app.post("/api/v1/probes/scan", response_model=ProbeScanResponse)
+def execute_onion_probe(
+    req: ProbeScanRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Executes passive OnionProbe infrastructure leak footprinting analysis."""
+    favicon_bytes = base64.b64decode(req.favicon_b64) if req.favicon_b64 else b""
+    report = OnionProbeEngine.probe_onion_target(
+        target_url=req.target_url,
+        html_content=req.html_content or "",
+        favicon_bytes=favicon_bytes,
+        headers_dict=req.headers or {},
+        tls_cert_pem=req.tls_cert_pem
+    )
+
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="ONION_PROBE_EXECUTIVE",
+        resource_type="PROBE_SCAN",
+        resource_id=req.target_url[:64],
+        payload={"leaks_count": report["total_leaks_found"], "target": req.target_url}
+    )
+    db.commit()
+
+    return ProbeScanResponse(**report)
+
+
+@app.post("/api/v1/collection/warc", response_model=WarcCollectionResponse)
+def collect_warc_artifact(
+    req: WarcCollectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Converts raw payload to ISO 28500 WARC record, stores artifact, and triggers Redis event bus."""
+    raw_bytes = req.raw_content.encode("utf-8")
+    artifact = ImmutableArtifact(raw_bytes=raw_bytes, source_uri=req.source_uri, content_type=req.content_type or "text/html")
+    warc_bytes = WARCWriter.create_warc_record(artifact)
+
+    storage = MinIOArtifactStorage()
+    stored_meta = storage.store_artifact(artifact, warc_bytes)
+
+    # Publish PAGE_COLLECTED event to Redis Streams bus
+    msg_id = event_bus.publish_event("stream:page_collected", {
+        "source_uri": req.source_uri,
+        "artifact_sha256": artifact.sha256,
+        "warc_sha256": stored_meta["warc_sha256"],
+        "collected_by": current_user.email
+    })
+
+    append_audit_event(
+        session=db,
+        actor_user_id=current_user.id,
+        action="WARC_ARTIFACT_STORED",
+        resource_type="ARTIFACT",
+        resource_id=artifact.sha256,
+        payload={"source_uri": req.source_uri, "warc_sha256": stored_meta["warc_sha256"]}
+    )
+    db.commit()
+
+    return WarcCollectionResponse(
+        warc_record_id=f"<urn:uuid:{artifact.sha256[:32]}>",
+        artifact_sha256=artifact.sha256,
+        warc_sha256=stored_meta["warc_sha256"],
+        file_path=stored_meta["filepath"],
+        file_size_bytes=stored_meta["size_bytes"],
+        stream_msg_id=msg_id,
+        timestamp=artifact.timestamp
+    )
+
 
 
