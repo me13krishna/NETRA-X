@@ -25,21 +25,27 @@ from packages.evidence.attribution import (
 )
 from packages.evidence.reporting import generate_pdf_report
 from packages.evidence.stix_export import generate_stix_bundle, generate_csv_export
+from packages.evidence.rbac import require_roles
 from packages.graph.projection import GraphProjectionService
+from packages.search.opensearch_client import opensearch_service
 from packages.schemas.models import (
     LoginRequest, TokenResponse, UserResponse, ActorSchema, AliasSchema,
     PGPKeySchema, WalletSchema, OnionServiceSchema, EvidenceSchema,
     EvidenceWaterfallItem, HypothesisSchema, ReviewRequest, AuditLogSchema,
     SearchResponse, SearchResultItem, CaseCreate, CaseResponse, DecisionEnum,
     CaseIdentifierCreate, CaseIdentifierResponse,
-    HypothesisStatus, IngestRequest, IngestResponse, ExtractedEvidence
+    HypothesisStatus, IngestRequest, IngestResponse, ExtractedEvidence,
+    BackupResponse, ReprojectResponse, RoleName
 )
+from apps.api.metrics import MetricsMiddleware, metrics_collector
 from apps.api.database.session import SyncSessionLocal, init_db_sync
 from apps.api.database.models import (
     User, Case, CaseMember, CaseIdentifier, Actor, Alias, Account, PGPKey, Wallet,
     OnionService, Server, Artifact, Evidence, Hypothesis, HypothesisEvidence,
     AnalystReview, AuditLog, Source, Observation
 )
+from workers.maintenance.backup_worker import DatabaseBackupWorker
+from workers.maintenance.graph_reproject_worker import GraphReprojectionWorker
 
 app = FastAPI(
     title="NETRA-X Intelligence API",
@@ -65,6 +71,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+app.add_middleware(MetricsMiddleware)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -153,6 +161,16 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "platform": "NETRA-X MVP v0.1", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/metrics")
+def get_prometheus_metrics():
+    """Expose standard Prometheus metrics format for observability monitoring."""
+    return Response(
+        content=metrics_collector.generate_prometheus_text(),
+        media_type="text/plain; version=0.0.4"
+    )
+
 
 
 # --- AUTH ENDPOINTS ---
@@ -1032,6 +1050,7 @@ def evaluate_attribution_on_demand(raw_items: List[Dict[str, Any]], current_user
             contradiction_type=item.get("contradiction_type", ""),
             abstain=bool(item.get("abstain", False))
         ))
+    metrics_collector.record_llr_evaluation()
     res = compute_attribution(evidence_inputs)
     return {
         "raw_log_lr": res.raw_log_lr,
@@ -1218,50 +1237,14 @@ def archive_case(id: str, db: Session = Depends(get_db), current_user: User = De
 
 # --- SEARCH ---
 @app.get("/api/v1/search", response_model=SearchResponse)
-def search_entities(q: str = Query(..., min_length=2), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    results = []
-    term = f"%{q}%"
-
-    # Search Actors
-    actors = db.query(Actor).filter(or_(Actor.primary_alias.ilike(term), Actor.category.ilike(term))).all()
-    for a in actors:
-        results.append(SearchResultItem(
-            entity_id=a.id,
-            entity_type="Actor",
-            title=f"Actor: {a.primary_alias}",
-            snippet=f"Category: {a.category} | Confidence: {a.confidence * 100:.0f}%",
-            source_uri="database://actors",
-            confidence=a.confidence,
-            provenance_hash=hashlib.sha256(a.id.encode()).hexdigest()
-        ))
-
-    # Search PGP Keys
-    keys = db.query(PGPKey).filter(or_(PGPKey.fingerprint.ilike(term), PGPKey.key_id.ilike(term))).all()
-    for k in keys:
-        results.append(SearchResultItem(
-            entity_id=k.id,
-            entity_type="PGPKey",
-            title=f"PGP Key ID: {k.key_id}",
-            snippet=f"Fingerprint: {k.fingerprint}",
-            source_uri="database://pgp_keys",
-            confidence=0.99,
-            provenance_hash=hashlib.sha256(k.id.encode()).hexdigest()
-        ))
-
-    # Search Wallets
-    wallets = db.query(Wallet).filter(Wallet.address.ilike(term)).all()
-    for w in wallets:
-        results.append(SearchResultItem(
-            entity_id=w.id,
-            entity_type="Wallet",
-            title=f"Wallet ({w.chain}): {w.address}",
-            snippet=f"Cluster: {w.cluster_id or 'Unclustered'}",
-            source_uri="database://wallets",
-            confidence=0.90,
-            provenance_hash=hashlib.sha256(w.id.encode()).hexdigest()
-        ))
-
-    return SearchResponse(query=q, total_matches=len(results), results=results)
+def search_entities(
+    q: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Hybrid OpenSearch & SQL Search Service."""
+    return opensearch_service.search(query_str=q, db=db, limit=limit)
 
 
 # --- EXPORTS & REPORTS ---
@@ -1547,4 +1530,28 @@ def format_evidence_waterfall_report(
         "ascii_diagram": ascii_diagram,
         "markdown_report": markdown_report,
     }
+
+
+# --- MAINTENANCE ENDPOINTS ---
+
+
+@app.post("/api/v1/maintenance/backup", response_model=BackupResponse)
+def create_database_backup(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(RoleName.ADMIN)),
+):
+    """Trigger timestamped database snapshot backup with SHA-256 validation."""
+    worker = DatabaseBackupWorker()
+    return worker.create_backup()
+
+
+@app.post("/api/v1/maintenance/reproject", response_model=ReprojectResponse)
+def reproject_graph_state(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles(RoleName.ADMIN, RoleName.INVESTIGATOR)),
+):
+    """Trigger re-projection of SQL database entities into NetworkX graph memory."""
+    worker = GraphReprojectionWorker()
+    return worker.run_reprojection(db)
+
 

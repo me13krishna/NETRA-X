@@ -16,6 +16,25 @@ class RoleName(str, Enum):
     VIEWER = "VIEWER"
 
 
+ROLE_PERMISSIONS: Dict[RoleName, List[str]] = {
+    RoleName.ADMIN: ["*"],
+    RoleName.INVESTIGATOR: [
+        "read", "create_case", "edit_case", "ingest_evidence", "review_hypothesis",
+        "evaluate_attribution", "export_report", "reproject_graph"
+    ],
+    RoleName.ANALYST: [
+        "read", "review_hypothesis", "evaluate_attribution", "export_report", "search"
+    ],
+    RoleName.RESEARCHER: [
+        "read", "evaluate_attribution", "search"
+    ],
+    RoleName.VIEWER: [
+        "read", "search"
+    ]
+}
+
+
+
 class CaseStatus(str, Enum):
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
@@ -310,3 +329,20 @@ class IngestResponse(BaseModel):
     extracted_count: int
     xmr_abstain: bool
     evidence: List[ExtractedEvidence]
+
+
+class BackupResponse(BaseModel):
+    filename: str
+    filepath: str
+    file_size_bytes: int
+    sha256_hash: str
+    timestamp: str
+    status: str
+
+
+class ReprojectResponse(BaseModel):
+    status: str
+    projection_stats: Dict[str, int]
+    actors_count: int
+    timestamp: str
+
